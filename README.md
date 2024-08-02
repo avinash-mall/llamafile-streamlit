@@ -23,7 +23,10 @@ The application is configured using environment variables and Streamlit widgets.
     ```sh
     pip install streamlit httpx pytz
     ```
-
+2. **Run the .llamafile**: Download and run the llamafile from huggingface model Mozilla/Meta-Llama-3.1-8B-Instruct-llamafile.
+   ```sh
+   ./Meta-Llama-3.1-8B-Instruct.Q8_0.llamafile -c 8192 --server --nobrowser
+   ```
 2. **Environment Variables**: Set the `API_URL` environment variable if you are not using the default API URL.
 
 3. **Run the Application**: Launch the Streamlit application:
