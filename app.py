@@ -1,195 +1,256 @@
-import os
-import httpx
 import json
+import psutil
+import requests
 import streamlit as st
-import asyncio
-import time
+from openai import OpenAI, APIConnectionError, APIStatusError, RateLimitError
 from datetime import datetime
+from io import StringIO
 import pytz
+import os
+import fitz  # PyMuPDF
+from docx import Document
+from dotenv import load_dotenv
+from streamlit_autorefresh import st_autorefresh
 
-# Configuration
-API_URL = os.getenv("API_URL", "http://127.0.0.1:8080")
-TIMEOUT = 600  # Timeout in seconds (10 minutes)
-INSTRUCTION = "A chat between a curious human and an artificial intelligence assistant. The assistant gives helpful, detailed, and polite answers to the human's questions."
+# Load environment variables from .env file
+load_dotenv()
 
-def trim(text):
-    """Trim leading and trailing whitespace from the text."""
-    return text.strip()
+# Access variables from the environment
+OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL")
 
-def trim_trailing(text):
-    """Trim trailing whitespace from the text."""
-    return text.rstrip()
+st.set_page_config(layout="wide")
+st.title("💬 LLamafile Chatbot")
 
-def format_prompt(messages, include_datetime):
-    """Format the chat messages into a prompt for the AI."""
-    system_info = ""
-    if include_datetime:
-        system_info = get_current_datetime_info() + "\n"
-    chat_text = "\n".join([f"### {'Human' if m['role'] == 'user' else 'Assistant'}: {m['content']}" for m in messages])
-    return f"{INSTRUCTION}\n{system_info}{chat_text}\n### Human:"
+# Initialize the OpenAI client
+client = OpenAI(base_url=f"{OPENAI_BASE_URL}/v1", api_key=OPENAI_API_KEY)
 
-def get_current_datetime_info():
-    """Get current date, time, day, and time zone."""
-    now = datetime.now(pytz.timezone('Asia/Dubai'))
-    current_time = now.strftime('%H:%M')
-    day = now.strftime('%A')
-    date = now.strftime('%B %d, %Y')
-    time_zone = now.tzinfo.zone
-    return f"The current time is {current_time} on {day}, {date}, Time zone is {time_zone}."
-
-async def chat_completion(question, messages, settings, debug_mode, display_timing, include_datetime):
-    """Send a chat completion request to the AI API and stream the response."""
-    messages_copy = messages + [{"role": "user", "content": question}]
-    prompt = trim_trailing(format_prompt(messages_copy, include_datetime) + "\n### Assistant:")
-    data = {
-        "prompt": prompt,
-        "temperature": settings["temperature"],
-        "top_k": settings["top_k"],
-        "top_p": settings["top_p"],
-        "min_p": settings["min_p"],
-        "n_predict": settings["n_predict"],
-        "n_keep": settings["n_keep"],
-        "typical_p": settings["typical_p"],
-        "repeat_penalty": settings["repeat_penalty"],
-        "repeat_last_n": settings["repeat_last_n"],
-        "penalize_nl": settings["penalize_nl"],
-        "presence_penalty": settings["presence_penalty"],
-        "frequency_penalty": settings["frequency_penalty"],
-        "penalty_prompt": settings["penalty_prompt"],
-        "mirostat": settings["mirostat"],
-        "mirostat_tau": settings["mirostat_tau"],
-        "mirostat_eta": settings["mirostat_eta"],
-        "seed": settings["seed"],
-        "ignore_eos": settings["ignore_eos"],
-        "n_probs": settings["n_probs"],
-        "slot_id": settings["slot_id"],
-        "cache_prompt": settings["cache_prompt"],
-        "stream": True,
-        "stop": ["\n### Human:"]
-    }
-
-    if debug_mode:
-        st.write("Prompt sent to API:")
-        st.json(data)
-
-    start_time = time.time()
+# Function to get model health status
+def get_model_health():
     try:
-        async with httpx.AsyncClient(timeout=TIMEOUT) as client:
-            async with client.stream("POST", f"{API_URL}/completion", headers={"Content-Type": "application/json"}, json=data) as response:
-                answer = ""
-                message_container = st.empty()
-                async for line in response.aiter_lines():
-                    if line and line.startswith("data:"):
-                        content = json.loads(line[5:])["content"]
-                        answer += content
-                        with message_container.container():
-                            st.markdown(f"**Assistant**: {answer}")
-                end_time = time.time()
-                if display_timing:
-                    st.markdown(f":blue[Response Time: {end_time - start_time:.2f} seconds]")
-                return trim(answer)
-    except httpx.ReadTimeout:
-        st.error("Request timed out. Please try again.")
-        return ""
+        health_url = f"{OPENAI_BASE_URL}/health"
+        response = requests.get(health_url)
+        if response.status_code == 200:
+            status = response.json().get("status", "unknown")
+            return status
+        else:
+            return "unknown"
     except Exception as e:
-        st.error(f"An error occurred: {e}")
-        return ""
+        return f"error ({str(e)})"
 
-def reset_chat():
-    """Reset the chat history and session state."""
-    st.session_state.messages = []
-    st.session_state.partial_answer = ""
+# Function to extract text from uploaded file using PyMuPDF (fitz)
+def extract_text_from_file(uploaded_file):
+    file_type = uploaded_file.type
 
-# Streamlit app setup
+    # Handle plain text files separately
+    if file_type == "text/plain":
+        return uploaded_file.getvalue().decode("utf-8")
+
+    # Handle PDF, XPS, EPUB, MOBI, FB2, CBZ, SVG, DOCX, XLSX, PPTX, HWPX, Images
+    elif file_type in ["application/pdf", "application/epub+zip", "application/x-mobipocket-ebook", "application/vnd.amazon.ebook", "application/fb2+xml", "application/vnd.comicbook+zip", "image/svg+xml", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"]:
+        document = fitz.open(stream=uploaded_file.read(), filetype=file_type.split('/')[-1])
+        text = ""
+        for page in document:
+            text += page.get_text()
+        return text
+    elif file_type in ["image/png", "image/jpeg", "image/jpg"]:
+        document = fitz.open(stream=uploaded_file.read(), filetype="image")
+        text = ""
+        for page in document:
+            text += page.get_text("text")
+        return text
+    else:
+        return "Unsupported file type."
+
+# Create rows and containers for CPU, Memory, and Health status
+row1 = st.columns(3)
+
+cpu_container = row1[0].container()
+mem_container = row1[1].container()
+health_container = row1[2].container()
+
+# Initialize session state variables
+if "openai_model" not in st.session_state:
+    st.session_state["openai_model"] = OPENAI_MODEL
+
 if "messages" not in st.session_state:
-    st.session_state.messages = []
+    st.session_state["messages"] = []
 
-if "partial_answer" not in st.session_state:
-    st.session_state.partial_answer = ""
+if "system_instruction" not in st.session_state:
+    st.session_state["system_instruction"] = ""
+
+# Load system prompts from JSON file
+with open('system_prompts.json') as f:
+    system_prompts = json.load(f)
 
 # Sidebar settings
-with st.sidebar:
-    if st.button("Start New Chat"):
-        reset_chat()
+st.sidebar.title("Settings")
 
-    st.header("Settings")
+# Dropdown for selecting system instruction prompt
+prompt_names = [prompt['name'] for prompt in system_prompts]
+default_prompt = next((prompt for prompt in system_prompts if prompt['name'] == "Assistant"), system_prompts[0])
+selected_prompt_name = st.sidebar.selectbox("Select System Instruction Prompt", prompt_names, index=prompt_names.index("Assistant"))
 
-    st.markdown("### General Settings")
-    debug_mode = st.toggle("Debug Mode", value=False, help="Enable to display the prompt sent to the API for debugging purposes.")
-    display_timing = st.toggle("Display Response Timing", value=True, help="Enable to display the response timing for the AI.")
-    include_datetime = st.toggle("Include Current DateTime", value=True, help="Enable to include the current date, time, day, and time zone in the system prompt.")
+# Retrieve the selected prompt content and description
+selected_prompt = next((prompt for prompt in system_prompts if prompt['name'] == selected_prompt_name), {})
+selected_prompt_content = selected_prompt.get("prompt", "")
+selected_prompt_description = selected_prompt.get("description", "")
 
-    st.divider()
+# Display the selected prompt description as a caption
+st.caption(f"🚀 {selected_prompt_description}")
 
-    st.markdown("### Generation Settings")
-    temperature = st.slider("Temperature:", 0.0, 1.0, 0.8, 0.1, help="Adjust the randomness of the generated text (default: 0.8).")
-    n_predict = st.selectbox("Number of predictions:", [-1, 512, 1024, 1536, 2048, 4096, 8192], 0, help="Set the maximum number of tokens to predict when generating text (default: -1 for infinity).")
-    top_k = st.slider("Top_k:", 0, 100, 40, help="Limit the next token selection to the K most probable tokens (default: 40).")
-    top_p = st.slider("Top_p:", 0.0, 1.0, 0.95, help="Limit the next token selection to a subset of tokens with a cumulative probability above a threshold P (default: 0.95).")
-    min_p = st.slider("Min_p:", 0.0, 1.0, 0.05, help="The minimum probability for a token to be considered, relative to the probability of the most likely token (default: 0.05).")
-    n_keep = st.slider("N_keep:", -1, 512, 0, help="Specify the number of tokens from the prompt to retain when the context size is exceeded and tokens need to be discarded (default: 0). Use -1 to retain all tokens from the prompt.")
-    typical_p = st.slider("Typical_p:", 0.0, 1.0, 1.0, help="Enable locally typical sampling with parameter p (default: 1.0).")
-    repeat_penalty = st.slider("Repeat_penalty:", 0.0, 2.0, 1.1, help="Control the repetition of token sequences in the generated text (default: 1.1).")
-    repeat_last_n = st.slider("Repeat_last_n:", -1, 512, 64, help="Last n tokens to consider for penalizing repetition (default: 64, 0 = disabled, -1 = ctx-size).")
+# Setting to enable/disable appending date and time to the prompt
+append_date_time = st.sidebar.toggle("Append Date and Time to Prompt", value=True)
 
-    st.divider()
+if append_date_time:
+    # Get the current time, date, day, and timezone
+    now = datetime.now(pytz.timezone('UTC')).astimezone()
+    current_time = now.strftime("%H:%M:%S")
+    current_date = now.strftime("%Y-%m-%d")
+    current_day = now.strftime("%A")
+    current_timezone = now.tzname()
 
-    st.markdown("### Penalty Settings")
-    penalize_nl = st.toggle("Penalize newlines:", value=True, help="Penalize newline tokens when applying the repeat penalty (default: true).")
-    presence_penalty = st.slider("Presence_penalty:", 0.0, 2.0, 0.0, help="Repeat alpha presence penalty (default: 0.0, 0.0 = disabled).")
-    frequency_penalty = st.slider("Frequency_penalty:", 0.0, 2.0, 0.0, help="Repeat alpha frequency penalty (default: 0.0, 0.0 = disabled).")
-    penalty_prompt = st.text_input("Penalty prompt:", "", help="This will replace the prompt for the purpose of the penalty evaluation. Can be either null, a string or an array of numbers representing tokens (default: null = use the original prompt).")
+    # Append date and time information to the selected prompt content
+    date_time_info = f"The current time is: {current_time}, date: {current_date}, day: {current_day}, timezone: {current_timezone}."
+    selected_prompt_content += "\n" + date_time_info
 
-    st.divider()
+# Store the selected system instruction prompt in session state
+st.session_state["system_instruction"] = selected_prompt_content
 
-    st.markdown("### Advanced Settings")
-    mirostat = st.slider("Mirostat:", 0, 2, 0, help="Enable Mirostat sampling, controlling perplexity during text generation (default: 0, 0 = disabled, 1 = Mirostat, 2 = Mirostat 2.0).")
-    mirostat_tau = st.slider("Mirostat_tau:", 0.0, 10.0, 5.0, help="Set the Mirostat target entropy, parameter tau (default: 5.0).")
-    mirostat_eta = st.slider("Mirostat_eta:", 0.0, 1.0, 0.1, help="Set the Mirostat learning rate, parameter eta (default: 0.1).")
-    seed = st.number_input("RNG seed:", value=-1, help="Set the random number generator (RNG) seed (default: -1, -1 = random seed).")
-    ignore_eos = st.toggle("Ignore end of stream token:", value=False, help="Ignore end of stream token and continue generating (default: false).")
-    n_probs = st.slider("N_probs:", 0, 100, 0, help="If greater than 0, the response also contains the probabilities of top N tokens for each generated token (default: 0).")
-    slot_id = st.number_input("Slot_id:", value=-1, help="Assign the completion task to a specific slot. If -1, the task will be assigned to an idle slot (default: -1).")
-    cache_prompt = st.toggle("Cache prompt:", value=False, help="Save the prompt and generation to avoid reprocessing the entire prompt if a part of it isn't changed (default: false).")
+# Toggle for advanced settings visibility
+settings_visible = st.sidebar.toggle("Show/Hide Advanced Settings", value=False)
 
-settings = {
-    "temperature": temperature,
-    "top_k": top_k,
-    "top_p": top_p,
-    "min_p": min_p,
-    "n_predict": n_predict,
-    "n_keep": n_keep,
-    "typical_p": typical_p,
-    "repeat_penalty": repeat_penalty,
-    "repeat_last_n": repeat_last_n,
-    "penalize_nl": penalize_nl,
-    "presence_penalty": presence_penalty,
-    "frequency_penalty": frequency_penalty,
-    "penalty_prompt": penalty_prompt if penalty_prompt else None,
-    "mirostat": mirostat,
-    "mirostat_tau": mirostat_tau,
-    "mirostat_eta": mirostat_eta,
-    "seed": seed,
-    "ignore_eos": ignore_eos,
-    "n_probs": n_probs,
-    "slot_id": slot_id,
-    "cache_prompt": cache_prompt,
-}
+# Default values for advanced settings when hidden
+temperature = 0.8
+top_p = 0.95
+frequency_penalty = 0.0
+presence_penalty = 0.0
+seed = -1
+logit_bias = "{}"
 
-# Display chat history
+if settings_visible:
+    # Advanced settings sliders and inputs
+    temperature = st.sidebar.slider(
+        "Temperature (Adjust the randomness of the generated text)",
+        min_value=0.0, max_value=1.0, value=0.8, step=0.1, help="Default: 0.8"
+    )
+    top_p = st.sidebar.slider(
+        "Top P (Limit the next token selection to a subset of tokens with a cumulative probability above a threshold P)",
+        min_value=0.0, max_value=1.0, value=0.95, step=0.01, help="Default: 0.95"
+    )
+    frequency_penalty = st.sidebar.slider(
+        "Frequency Penalty (Control the repetition of token sequences in the generated text)",
+        min_value=0.0, max_value=2.0, value=0.0, step=0.1, help="Default: 0.0"
+    )
+    presence_penalty = st.sidebar.slider(
+        "Presence Penalty (Repeat alpha presence penalty)",
+        min_value=0.0, max_value=2.0, value=0.0, step=0.1, help="Default: 0.0"
+    )
+    seed = st.sidebar.number_input(
+        "Seed (Set the random number generator (RNG) seed)",
+        value=-1, help="Default: -1 (random seed)"
+    )
+    logit_bias = st.sidebar.text_area(
+        "Logit Bias (Modify the likelihood of a token appearing in the generated text completion. JSON format)",
+        "{}", help='Default: []'
+    )
+
+# Modify chat input based on the selected prompt
+chat_input_label = "How can I help you?"
+
+if selected_prompt_name == "Text Summarizer":
+    chat_input_label = "Please paste the text or upload the file to get a summary"
+    uploaded_file = st.file_uploader("Upload a text, PDF, or Word document", type=["txt", "pdf", "docx", "epub", "mobi", "fb2", "cbz", "svg", "png", "jpeg", "jpg"])
+    if uploaded_file is not None:
+        file_text = extract_text_from_file(uploaded_file)
+        st.session_state.messages.append({"role": "user", "content": file_text})
+        with st.chat_message("user"):
+            st.markdown(file_text)
+
+        # Automatically trigger the assistant to process the uploaded text
+        try:
+            with st.spinner("Thinking..."):
+                with st.chat_message("assistant"):
+                    messages = [{"role": "system", "content": st.session_state.system_instruction}] if st.session_state.system_instruction else []
+                    messages += [
+                        {"role": m["role"], "content": m["content"]}
+                        for m in st.session_state.messages
+                    ]
+                    stream = client.chat.completions.create(
+                        model=st.session_state["openai_model"],
+                        messages=messages,
+                        temperature=temperature,
+                        top_p=top_p,
+                        frequency_penalty=frequency_penalty,
+                        presence_penalty=presence_penalty,
+                        seed=seed,
+                        logit_bias=eval(logit_bias),  # Converting JSON string to dict
+                        stream=True,
+                    )
+                    response = st.write_stream(stream)
+                st.session_state.messages.append({"role": "assistant", "content": response})
+        except APIConnectionError as e:
+            st.error("The server could not be reached.")
+            st.error(f"Details: {e.__cause__}")
+        except RateLimitError as e:
+            st.error("Rate limit exceeded; please try again later.")
+        except APIStatusError as e:
+            st.error(f"An error occurred: {e.status_code}")
+            st.error(f"Response: {e.response}")
+        except Exception as e:
+            st.error(f"An unexpected error occurred: {str(e)}")
+
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# User input
-if prompt := st.chat_input("What is up?"):
+if prompt := st.chat_input(chat_input_label):
+    st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    with st.chat_message("assistant"):
-        st.session_state.partial_answer = ""
-        with st.spinner("Writing..."):
-            response = asyncio.run(chat_completion(prompt, st.session_state.messages, settings, debug_mode, display_timing, include_datetime))
+    try:
+        with st.spinner("Thinking..."):
+            with st.chat_message("assistant"):
+                messages = [{"role": "system", "content": st.session_state.system_instruction}] if st.session_state.system_instruction else []
+                messages += [
+                    {"role": m["role"], "content": m["content"]}
+                    for m in st.session_state.messages
+                ]
+                stream = client.chat.completions.create(
+                    model=st.session_state["openai_model"],
+                    messages=messages,
+                    temperature=temperature,
+                    top_p=top_p,
+                    frequency_penalty=frequency_penalty,
+                    presence_penalty=presence_penalty,
+                    seed=seed,
+                    logit_bias=eval(logit_bias),  # Converting JSON string to dict
+                    stream=True,
+                )
+                response = st.write_stream(stream)
+            st.session_state.messages.append({"role": "assistant", "content": response})
+    except APIConnectionError as e:
+        st.error("The server could not be reached.")
+        st.error(f"Details: {e.__cause__}")
+    except RateLimitError as e:
+        st.error("Rate limit exceeded; please try again later.")
+    except APIStatusError as e:
+        st.error(f"An error occurred: {e.status_code}")
+        st.error(f"Response: {e.response}")
+    except Exception as e:
+        st.error(f"An unexpected error occurred: {str(e)}")
 
-    st.session_state.messages.append({"role": "user", "content": prompt})
-    st.session_state.messages.append({"role": "assistant", "content": response})
+# Automatically refresh the CPU, Memory, and Health status every 5 seconds
+count = st_autorefresh(interval=5000, key="status_refresh")
+
+# Update CPU, Memory, and Health status in real-time
+cpu_usage = psutil.cpu_percent(interval=1)
+mem_usage = psutil.virtual_memory().percent
+model_health = get_model_health()
+
+# Display the metrics inside their respective containers
+cpu_container.metric(label="CPU Usage", value=f"{cpu_usage}%")
+mem_container.metric(label="Memory Usage", value=f"{mem_usage}%")
+health_container.metric(label="Model Health", value=model_health)
