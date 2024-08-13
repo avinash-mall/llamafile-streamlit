@@ -28,7 +28,6 @@ pip install -r requirements.txt
 
 Create a `.env` file in the root directory of the project with the following content:
 
-.env
 ```
 OPENAI_BASE_URL=<your-openai-base-url>
 OPENAI_API_KEY=<your-openai-api-key>
@@ -44,7 +43,7 @@ Replace the placeholders with your actual OpenAI API information.
 To run the Streamlit application, use the following command:
 
 ```bash
-`streamlit run app.py` 
+streamlit run app.py
 ```
 The application will start and you can access it in your web browser at `http://localhost:8501`.
 
@@ -53,9 +52,10 @@ The application will start and you can access it in your web browser at `http://
 Download and run the llamafile from the Hugging Face model `Mozilla/Meta-Llama-3.1-8B-Instruct-llamafile`:
 
 ```bash
-./Meta-Llama-3.1-8B-Instruct.Q8_0.llamafile -c 8192 --server --nobrowser
+./Meta-Llama-3.1-8B-Instruct.Q8_0.llamafile -c 0 --server --host 0.0.0.0 --nobrowser --mlock
 ```
 This command will start the Llama server in a non-browser mode.
+Use the context according to the memory you have. c 8192 needs around 8GB, c 0 needs around 16GB
 
 ## Customization
 
