@@ -1,0 +1,9 @@
+streamlit
+openai
+psutil
+requests
+python-dotenv
+pytz
+PyMuPDF
+python-docx
+streamlit-autorefresh
