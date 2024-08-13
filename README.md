@@ -1,62 +1,70 @@
 # Chat Assistant Application
 
-This application is a chat interface that interacts with an AI assistant, providing helpful, detailed, and polite responses to user queries. It uses Streamlit for the frontend, `httpx` for asynchronous HTTP requests, and various settings to customize the AI's responses.
+This repository contains a Streamlit application for interacting with an OpenAI model. The application supports various file uploads, real-time system monitoring, and customizable prompts for dynamic interaction with the model.
 
 ## Features
 
-- **Chat Interface**: Interact with the AI assistant through a user-friendly chat interface.
-- **Customizable Settings**: Adjust various settings for AI response generation, including temperature, top_k, top_p, and more.
-- **Response Timing**: Optionally display the response time for each AI-generated reply.
-- **Debug Mode**: Enable debug mode to view the prompt sent to the AI API for troubleshooting.
+- **OpenAI API Integration**: Easily interact with the OpenAI model using customizable prompts.
+- **File Upload and Text Extraction**: Supports multiple file types (PDF, DOCX, images, etc.) and extracts text for processing.
+- **Real-time System Monitoring**: Monitors and displays CPU usage, memory usage, and model health status.
+- **Advanced Settings**: Fine-tune model parameters such as temperature, top_p, frequency_penalty, and presence_penalty.
 
-## Configuration
+## Installation
 
-The application is configured using environment variables and Streamlit widgets. The key configuration variables include:
+### Prerequisites
 
-- `API_URL`: The URL of the AI API (default: `http://127.0.0.1:8080`).
-- `TIMEOUT`: Request timeout in seconds (default: 600 seconds or 10 minutes).
-- `INSTRUCTION`: Initial instruction to the AI assistant.
+- Python 3.8 or higher
+- [pip](https://pip.pypa.io/en/stable/installation/)
 
-## Setup
 
-1. **Install Dependencies**: Ensure you have the necessary dependencies installed. You can install them using pip:
-    ```sh
-    pip install streamlit httpx pytz
-    ```
-2. **Run the .llamafile**: Download and run the llamafile from huggingface model Mozilla/Meta-Llama-3.1-8B-Instruct-llamafile.
-   ```sh
-   ./Meta-Llama-3.1-8B-Instruct.Q8_0.llamafile -c 8192 --server --nobrowser
-   ```
-2. **Environment Variables**: Set the `API_URL` environment variable if you are not using the default API URL.
+### Install Dependencies
 
-3. **Run the Application**: Launch the Streamlit application:
-    ```sh
-    streamlit run app.py
-    ```
+Install the required Python packages using `pip`:
 
-## Code Overview
+```bash
+pip install -r requirements.txt 
+```
+### Environment Variables
 
-### Helper Functions
+Create a `.env` file in the root directory of the project with the following content:
 
-- **trim(text)**: Trims leading and trailing whitespace from the text.
-- **trim_trailing(text)**: Trims trailing whitespace from the text.
-- **format_prompt(messages, include_datetime)**: Formats the chat messages into a prompt for the AI, optionally including the current date and time.
-- **get_current_datetime_info()**: Returns the current date, time, day, and time zone information.
-- **chat_completion(question, messages, settings, debug_mode, display_timing, include_datetime)**: Sends a chat completion request to the AI API and streams the response.
-- **reset_chat()**: Resets the chat history and session state.
+.env
+```
+OPENAI_BASE_URL=<your-openai-base-url>
+OPENAI_API_KEY=<your-openai-api-key>
+OPENAI_MODEL=<your-openai-model>` 
+```
 
-### Streamlit Interface
+Replace the placeholders with your actual OpenAI API information.
 
-- **Session State**: Manages chat messages and partial responses.
-- **Sidebar Settings**: Provides various settings to customize AI response generation, including general settings, generation settings, penalty settings, and advanced settings.
-- **Chat Display**: Displays chat history and user input.
+## Usage
 
-## Example Usage
+### Run the Application
 
-1. **Start a New Chat**: Click the "Start New Chat" button in the sidebar to reset the chat history.
-2. **Adjust Settings**: Use the sidebar to adjust settings such as temperature, top_k, top_p, and more.
-3. **Ask a Question**: Enter your question in the chat input box and receive a response from the AI assistant.
+To run the Streamlit application, use the following command:
+
+```bash
+`streamlit run app.py` 
+```
+The application will start and you can access it in your web browser at `http://localhost:8501`.
+
+### Run the .llamafile
+
+Download and run the llamafile from the Hugging Face model `Mozilla/Meta-Llama-3.1-8B-Instruct-llamafile`:
+
+```bash
+./Meta-Llama-3.1-8B-Instruct.Q8_0.llamafile -c 8192 --server --nobrowser
+```
+This command will start the Llama server in a non-browser mode.
+
+## Customization
+
+You can customize the system prompts and other settings through the sidebar in the Streamlit app. Adjust parameters like temperature, top_p, and others to tailor the model's behavior to your needs.
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request or open an issue on GitHub.
 
 ## License
 
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License. See the LICENSE file for details.
