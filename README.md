@@ -1,13 +1,19 @@
 # Chat Assistant Application
 
-This repository contains a Streamlit application for interacting with an OpenAI model. The application supports various file uploads, real-time system monitoring, and customizable prompts for dynamic interaction with the model.
+This repository contains a Streamlit application for interacting with an OpenAI compatible model. The application supports various file uploads, real-time system monitoring, and customizable prompts for dynamic interaction with the model.
+
+It offers two main features:
+1. **LLamafile Chatbot**: An interactive chatbot interface.
+2. **Text Summarizer**: A tool for summarizing text from various file formats.
 
 ## Features
 
-- **OpenAI API Integration**: Easily interact with the OpenAI model using customizable prompts.
-- **File Upload and Text Extraction**: Supports multiple file types (PDF, DOCX, images, etc.) and extracts text for processing.
-- **Real-time System Monitoring**: Monitors and displays CPU usage, memory usage, and model health status.
-- **Advanced Settings**: Fine-tune model parameters such as temperature, top_p, frequency_penalty, and presence_penalty.
+- **OpenAI API Integration**: Easily interact with the OpenAI compatible model api using customizable prompts.
+- **Chatbot**: Interact with the AI model using a conversational interface.
+- **Text Summarizer**: Upload files in different formats (PDF, DOCX, images, etc.) and get concise summaries.
+- **OCR Support**: Extract text from images and scanned PDFs using EasyOCR.
+- **Advanced Settings**: Customize parameters such as temperature, top-p, frequency penalty, presence penalty, and more.
+- **Real-time Metrics**: Display CPU, memory usage, and model health status.
 
 ## Installation
 
@@ -16,38 +22,46 @@ This repository contains a Streamlit application for interacting with an OpenAI 
 - Python 3.8 or higher
 - [pip](https://pip.pypa.io/en/stable/installation/)
 
+1. **Clone the Repository**:
 
-### Install Dependencies
+    ```bash
+    git clone https://github.com/avinash-mall/llamafile-streamlit.git
+    cd llamafile-streamlit
+    ```
+2. **Install the Required Packages**:
 
 Install the required Python packages using `pip`:
 
 ```bash
 pip install -r requirements.txt 
 ```
-### Environment Variables
+3. **Set Up Environment Variables**:
 
-Create a `.env` file in the root directory of the project with the following content:
+Edit `.env` file in the root directory of the project with the following content:
 
-```
-OPENAI_BASE_URL=<your-openai-base-url>
-OPENAI_API_KEY=<your-openai-api-key>
-OPENAI_MODEL=<your-openai-model>` 
-```
+ ```env
+    OPENAI_BASE_URL="https://api.openai.com"
+    OPENAI_API_KEY="your_openai_api_key"
+    OPENAI_MODEL="llama3.1" # or the model of your choice
+    MODEL_PATH="path_to_your_model"
+    TOKENIZER_PATH="path_to_tokenizer"
+    MAX_TOKENS="131072"
+    SYSTEM_INSTRUCTION="Your system instruction here"
+    EASYOCR_MODELS_PATH="./models/easyocr"
+ ```
 
 Replace the placeholders with your actual OpenAI API information.
 
-## Usage
+4. **Run the Application**:
 
-### Run the Application
+    Start the Streamlit app with:
 
-To run the Streamlit application, use the following command:
-
-```bash
-streamlit run app.py
-```
+    ```bash
+    streamlit run app.py
+    ```
 The application will start and you can access it in your web browser at `http://localhost:8501`.
 
-### Run the .llamafile
+4. **Run the LLamafile**:
 
 Download and run the llamafile from the Hugging Face model `Mozilla/Meta-Llama-3.1-8B-Instruct-llamafile`:
 
@@ -59,7 +73,7 @@ Use the context according to the memory you have. c 8192 needs around 8GB, c 0 n
 
 ## Customization
 
-You can customize the system prompts and other settings through the sidebar in the Streamlit app. Adjust parameters like temperature, top_p, and others to tailor the model's behavior to your needs.
+You can customize the system prompts and other settings through the settings.json and system_prompts.json. Adjust parameters like temperature, top_p, and others to tailor the model's behavior to your needs.
 
 ## Contributing
 
