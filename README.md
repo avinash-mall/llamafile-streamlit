@@ -48,7 +48,12 @@ Edit `.env` file in the root directory of the project with the following content
  ```
 Replace the placeholders with your actual OpenAI API information.
 
-4. **Run the Application**:
+4. **Download The Models**:
+```python
+python downloads.py
+```
+
+5. **Run the Application**:
 
 Start the Streamlit app with:
 ```bash
@@ -56,7 +61,7 @@ streamlit run app.py
 ```
 The application will start and you can access it in your web browser at `http://localhost:8501`.
 
-4. **Run the LLamafile**:
+6. **Run the LLamafile**:
 Download and run the llamafile from the Hugging Face model `Mozilla/Meta-Llama-3.1-8B-Instruct-llamafile`:
 ```bash
 ./Meta-Llama-3.1-8B-Instruct.Q8_0.llamafile -c 0 --server --host 0.0.0.0 --nobrowser --mlock
