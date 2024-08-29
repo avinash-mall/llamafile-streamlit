@@ -7,3 +7,4 @@ pytz
 PyMuPDF
 python-docx
 streamlit-autorefresh
+easyocr
