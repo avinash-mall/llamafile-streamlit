@@ -72,6 +72,20 @@ if "openai_model" not in st.session_state:
 if "messages" not in st.session_state:
     st.session_state["messages"] = []
 
+# Default values for advanced settings when hidden
+temperature = settings["temperature"]["default"]
+top_p = settings["top_p"]["default"]
+frequency_penalty = settings["frequency_penalty"]["default"]
+presence_penalty = settings["presence_penalty"]["default"]
+seed = settings["seed"]["default"]
+logit_bias = settings["logit_bias"]["default"]
+logprobs = settings["logprobs"]["default"]
+top_logprobs = settings["top_logprobs"]["default"]
+max_tokens = settings["max_tokens"]["default"]
+n = settings["n"]["default"]
+stop = json.dumps(settings["stop"]["default"])
+stream_t = settings["stream"]["default"]
+
 # Toggle to show/hide advanced settings
 settings_visible = st.sidebar.toggle("Show/Hide Advanced Settings", value=False)
 
