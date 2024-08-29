@@ -47,6 +47,13 @@ client = OpenAI(base_url=f"{OPENAI_BASE_URL}/v1", api_key=OPENAI_API_KEY)
 st.session_state["messages"] = []  # Reset messages when visiting this page
 st.session_state["system_instruction"] = SYSTEM_INSTRUCTION  # Set from .env variable for this page
 
+# Initialize session state variables
+if "openai_model" not in st.session_state:
+    st.session_state["openai_model"] = OPENAI_MODEL
+
+if "debug" not in st.session_state:
+    st.session_state["debug"] = False
+
 # Load OCR languages from the JSON file
 with open('ocr_languages.json', 'r') as file:
     ocr_languages = json.load(file)
@@ -69,7 +76,7 @@ top_logprobs = settings["top_logprobs"]["default"]
 max_tokens = settings["max_tokens"]["default"]
 n = settings["n"]["default"]
 stop = json.dumps(settings["stop"]["default"])
-stream = settings["stream"]["default"]
+stream_t = settings["stream"]["default"]
 
 # Toggle to show/hide advanced settings
 settings_visible = st.sidebar.toggle("Show/Hide Advanced Settings", value=False)
