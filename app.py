@@ -1,12 +1,13 @@
 import json
 import os
-import psutil
-import requests
-import streamlit as st
-from openai import OpenAI, APIConnectionError, APIStatusError, RateLimitError
 from datetime import datetime
+
+import psutil
+import streamlit as st
 from dotenv import load_dotenv
+from openai import OpenAI, APIConnectionError, APIStatusError, RateLimitError
 from streamlit_autorefresh import st_autorefresh
+
 from utils import get_model_health
 
 # Load environment variables from .env file
@@ -71,6 +72,9 @@ if "openai_model" not in st.session_state:
 
 if "messages" not in st.session_state:
     st.session_state["messages"] = []
+
+if "debug" not in st.session_state:
+    st.session_state["debug"] = False
 
 # Default values for advanced settings when hidden
 temperature = settings["temperature"]["default"]
