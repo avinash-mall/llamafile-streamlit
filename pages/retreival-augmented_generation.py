@@ -100,11 +100,10 @@ if prompt := st.chat_input("How can I help you?"):
                     # Remove duplicates (in case the same document appears multiple times)
                     unique_document_names = list(set(document_names))
                     unique_timestamps = list(set(timestamps))
+                    # Format timestamps for better readability
+                    unique_timestamps = [format_timestamp(ts) for ts in unique_timestamps]
 
-                # Format timestamps for better readability
-                unique_timestamps = [format_timestamp(ts) for ts in unique_timestamps]
-
-                context = "\n".join(context_chunks)
+                context = "\n".join(context_chunks) if context_chunks else ""
 
                 # Prepare the full conversation history
                 messages = [{"role": message["role"], "content": message["content"]}
