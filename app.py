@@ -1,16 +1,19 @@
-import json
-import os
-from datetime import datetime
-
-import psutil
 import streamlit as st
+import json
+from datetime import datetime
+import os
 from dotenv import load_dotenv
 from openai import OpenAI, APIConnectionError, APIStatusError, RateLimitError
-from streamlit_autorefresh import st_autorefresh
+from utils import (
+    get_model_health,
+    append_date_time_to_prompt,
+    load_advanced_settings,
+    display_advanced_settings,
+    refresh_metrics,
+    toggle_display_metrics
+)
 
-from utils import get_model_health
-
-# Load environment variables from .env file
+# Load environment variables
 load_dotenv()
 
 # Access variables from the environment
@@ -50,18 +53,7 @@ st.caption(f"🚀 {selected_prompt_description}")
 
 # Setting to enable/disable appending date and time to the prompt
 append_date_time = st.sidebar.toggle("Append Date and Time to Prompt", value=True)
-
-if append_date_time:
-    # Get the current time, date, day, and timezone
-    now = datetime.now().astimezone()
-    current_time = now.strftime("%H:%M:%S")
-    current_date = now.strftime("%Y-%m-%d")
-    current_day = now.strftime("%A")
-    current_timezone = now.tzname()
-
-    # Append date and time information to the selected prompt content
-    date_time_info = f"The current time is: {current_time}, date: {current_date}, day: {current_day}, timezone: {current_timezone}."
-    selected_prompt_content += "\n" + date_time_info
+selected_prompt_content = append_date_time_to_prompt(selected_prompt_content, append_date_time)
 
 # Store the selected system instruction prompt in session state
 st.session_state["system_instruction"] = selected_prompt_content
@@ -76,61 +68,12 @@ if "messages" not in st.session_state:
 if "debug" not in st.session_state:
     st.session_state["debug"] = False
 
-# Default values for advanced settings when hidden
-temperature = settings["temperature"]["default"]
-top_p = settings["top_p"]["default"]
-frequency_penalty = settings["frequency_penalty"]["default"]
-presence_penalty = settings["presence_penalty"]["default"]
-seed = settings["seed"]["default"]
-logit_bias = settings["logit_bias"]["default"]
-logprobs = settings["logprobs"]["default"]
-top_logprobs = settings["top_logprobs"]["default"]
-max_tokens = settings["max_tokens"]["default"]
-n = settings["n"]["default"]
-stop = json.dumps(settings["stop"]["default"])
-stream_t = settings["stream"]["default"]
-
-# Toggle to show/hide advanced settings
+# Load advanced settings
 settings_visible = st.sidebar.toggle("Show/Hide Advanced Settings", value=False)
-
-if settings_visible:
-    # Advanced settings sliders and inputs
-    temperature = st.sidebar.slider("Temperature", min_value=settings["temperature"]["min"], max_value=settings["temperature"]["max"],
-                                    value=settings["temperature"]["default"], step=settings["temperature"]["step"], help=settings["temperature"]["help"])
-
-    top_p = st.sidebar.slider("Top P", min_value=settings["top_p"]["min"], max_value=settings["top_p"]["max"],
-                              value=settings["top_p"]["default"], step=settings["top_p"]["step"], help=settings["top_p"]["help"])
-
-    frequency_penalty = st.sidebar.slider("Frequency Penalty", min_value=settings["frequency_penalty"]["min"], max_value=settings["frequency_penalty"]["max"],
-                                          value=settings["frequency_penalty"]["default"], step=settings["frequency_penalty"]["step"], help=settings["frequency_penalty"]["help"])
-
-    presence_penalty = st.sidebar.slider("Presence Penalty", min_value=settings["presence_penalty"]["min"], max_value=settings["presence_penalty"]["max"],
-                                         value=settings["presence_penalty"]["default"], step=settings["presence_penalty"]["step"], help=settings["presence_penalty"]["help"])
-
-    seed = st.sidebar.number_input("Seed", value=settings["seed"]["default"], help=settings["seed"]["help"])
-
-    logit_bias = st.sidebar.text_area("Logit Bias", settings["logit_bias"]["default"], help=settings["logit_bias"]["help"])
-
-    logprobs = st.sidebar.toggle("Return Log Probabilities", value=settings["logprobs"]["default"], help=settings["logprobs"]["help"])
-
-    top_logprobs = st.sidebar.number_input("Top Logprobs", min_value=settings["top_logprobs"]["min"], max_value=settings["top_logprobs"]["max"],
-                                           value=settings["top_logprobs"]["default"], help=settings["top_logprobs"]["help"])
-
-    max_tokens = st.sidebar.number_input("Max Tokens", min_value=settings["max_tokens"]["min"], max_value=settings["max_tokens"]["max"],
-                                         value=settings["max_tokens"]["default"], help=settings["max_tokens"]["help"])
-
-    n = st.sidebar.number_input("Number of Choices (n)", min_value=settings["n"]["min"], max_value=settings["n"]["max"],
-                                value=settings["n"]["default"], help=settings["n"]["help"])
-
-    stop = st.sidebar.text_area("Stop Sequences", json.dumps(settings["stop"]["default"]), help=settings["stop"]["help"])
-
-    stream_t = st.sidebar.toggle("Stream Output", value=settings["stream"]["default"], help=settings["stream"]["help"])
-
-    # Enable debug mode toggle inside advanced settings
-    st.session_state["debug"] = st.sidebar.toggle("Enable Debug Mode", value=False, help="Toggle to enable or disable debug mode for detailed insights.")
+advanced_settings = display_advanced_settings(settings_visible) if settings_visible else load_advanced_settings()
 
 # Toggle to enable/disable the display of CPU, Memory, and Model Health metrics
-display_metrics = st.sidebar.toggle("Display CPU, Memory, and Model Health Metrics", value=False, help="Enable to show CPU, memory, and model health metrics")
+display_metrics = toggle_display_metrics()
 
 # Chat input
 if prompt := st.chat_input("How can I help you?"):
@@ -146,18 +89,18 @@ if prompt := st.chat_input("How can I help you?"):
                 stream = client.chat.completions.create(
                     model=st.session_state["openai_model"],
                     messages=messages,
-                    temperature=temperature,
-                    top_p=top_p,
-                    frequency_penalty=frequency_penalty,
-                    presence_penalty=presence_penalty,
-                    seed=seed,
-                    logit_bias=eval(logit_bias),  # Converting JSON string to dict
-                    logprobs=logprobs,
-                    top_logprobs=top_logprobs if logprobs else None,
-                    max_tokens=max_tokens,
-                    n=n,
-                    stop=json.loads(stop),
-                    stream=stream_t,
+                    temperature=advanced_settings["temperature"],
+                    top_p=advanced_settings["top_p"],
+                    frequency_penalty=advanced_settings["frequency_penalty"],
+                    presence_penalty=advanced_settings["presence_penalty"],
+                    seed=advanced_settings["seed"],
+                    logit_bias=eval(advanced_settings["logit_bias"]),
+                    logprobs=advanced_settings["logprobs"],
+                    top_logprobs=advanced_settings["top_logprobs"] if advanced_settings["logprobs"] else None,
+                    max_tokens=advanced_settings["max_tokens"],
+                    n=advanced_settings["n"],
+                    stop=json.loads(advanced_settings["stop"]),
+                    stream=advanced_settings["stream_t"],
                 )
                 response = st.write_stream(stream)
             st.session_state.messages.append({"role": "assistant", "content": response})
@@ -175,21 +118,4 @@ if prompt := st.chat_input("How can I help you?"):
         st.error(f"An unexpected error occurred: {str(e)}")
 
 # Automatically refresh CPU, Memory, and Health status every 5 seconds if metrics display is enabled
-if display_metrics:
-    count = st_autorefresh(interval=5000, key="status_refresh")
-
-    # Update CPU, Memory, and Health status in real-time
-    cpu_usage = psutil.cpu_percent(interval=1)
-    mem_usage = psutil.virtual_memory().percent
-    model_health = get_model_health()
-
-    # Create rows and containers for CPU, Memory, and Health status
-    row1 = st.columns(3)
-    cpu_container = row1[0].container()
-    mem_container = row1[1].container()
-    health_container = row1[2].container()
-
-    # Display the metrics inside their respective containers
-    cpu_container.metric(label="CPU Usage", value=f"{cpu_usage}%")
-    mem_container.metric(label="Memory Usage", value=f"{mem_usage}%")
-    health_container.metric(label="Model Health", value=model_health)
+refresh_metrics(display_metrics)
