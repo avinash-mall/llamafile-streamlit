@@ -1,19 +1,21 @@
 import os
-import re
-import unicodedata
-import time
 import json
-import fitz  # PyMuPDF
+import time
 import streamlit as st
-import easyocr
-import docx
-import numpy as np
-from PIL import Image
 from openai import OpenAI, APIConnectionError, APIStatusError, RateLimitError
 from dotenv import load_dotenv
-from semantic_text_splitter import TextSplitter
-from sentence_transformers import SentenceTransformer
-from tokenizers import Tokenizer
+from utils import (
+    clean_text,
+    split_text_semantically,
+    extract_text_from_file,
+    display_debug_info,
+    load_advanced_settings,
+    display_advanced_settings,
+    append_date_time_to_prompt,
+    toggle_display_metrics,
+    refresh_metrics,
+    get_model_health,
+)
 
 # Load environment variables from .env file
 load_dotenv()
@@ -22,20 +24,7 @@ load_dotenv()
 OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL")
-MODEL_PATH = os.getenv("MODEL_PATH")
-TOKENIZER_PATH = os.getenv("TOKENIZER_PATH")
-MAX_TOKENS = int(os.getenv("MAX_TOKENS"))
 SYSTEM_INSTRUCTION = os.getenv("SYSTEM_INSTRUCTION", "You're a Text Summarizer...")  # Default instruction if not set
-EASYOCR_MODELS_PATH = os.getenv("EASYOCR_MODELS_PATH", "./models")  # Default to './models' if not set
-
-# Load settings from settings.json file
-with open('settings.json') as f:
-    settings = json.load(f)
-
-# Initialize SentenceTransformer model and tokenizer
-model = SentenceTransformer(MODEL_PATH)
-tokenizer = Tokenizer.from_file(os.path.join(TOKENIZER_PATH, "tokenizer.json"))
-splitter = TextSplitter.from_huggingface_tokenizer(tokenizer, MAX_TOKENS, trim=False)
 
 st.set_page_config(layout="wide")
 st.title("💬 Text Summarizer")
@@ -64,58 +53,19 @@ language_codes = {lang["language"]: lang["code"] for lang in ocr_languages}
 # Sidebar settings
 st.sidebar.title("Settings")
 
-# Default values for advanced settings when hidden
-temperature = settings["temperature"]["default"]
-top_p = settings["top_p"]["default"]
-frequency_penalty = settings["frequency_penalty"]["default"]
-presence_penalty = settings["presence_penalty"]["default"]
-seed = settings["seed"]["default"]
-logit_bias = settings["logit_bias"]["default"]
-logprobs = settings["logprobs"]["default"]
-top_logprobs = settings["top_logprobs"]["default"]
-max_tokens = settings["max_tokens"]["default"]
-n = settings["n"]["default"]
-stop = json.dumps(settings["stop"]["default"])
-stream_t = settings["stream"]["default"]
+# Toggle for appending date and time to the system prompt
+append_date_time = st.sidebar.toggle("Append Date and Time to Prompt", value=True)
+st.session_state["system_instruction"] = append_date_time_to_prompt(st.session_state["system_instruction"], append_date_time)
 
 # Toggle to show/hide advanced settings
 settings_visible = st.sidebar.toggle("Show/Hide Advanced Settings", value=False)
-
 if settings_visible:
-    # Advanced settings sliders and inputs
-    temperature = st.sidebar.slider("Temperature", min_value=settings["temperature"]["min"], max_value=settings["temperature"]["max"],
-                                    value=settings["temperature"]["default"], step=settings["temperature"]["step"], help=settings["temperature"]["help"])
+    advanced_settings = display_advanced_settings(settings_visible)
+else:
+    advanced_settings = load_advanced_settings()
 
-    top_p = st.sidebar.slider("Top P", min_value=settings["top_p"]["min"], max_value=settings["top_p"]["max"],
-                              value=settings["top_p"]["default"], step=settings["top_p"]["step"], help=settings["top_p"]["help"])
-
-    frequency_penalty = st.sidebar.slider("Frequency Penalty", min_value=settings["frequency_penalty"]["min"], max_value=settings["frequency_penalty"]["max"],
-                                          value=settings["frequency_penalty"]["default"], step=settings["frequency_penalty"]["step"], help=settings["frequency_penalty"]["help"])
-
-    presence_penalty = st.sidebar.slider("Presence Penalty", min_value=settings["presence_penalty"]["min"], max_value=settings["presence_penalty"]["max"],
-                                         value=settings["presence_penalty"]["default"], step=settings["presence_penalty"]["step"], help=settings["presence_penalty"]["help"])
-
-    seed = st.sidebar.number_input("Seed", value=settings["seed"]["default"], help=settings["seed"]["help"])
-
-    logit_bias = st.sidebar.text_area("Logit Bias", settings["logit_bias"]["default"], help=settings["logit_bias"]["help"])
-
-    logprobs = st.sidebar.toggle("Return Log Probabilities", value=settings["logprobs"]["default"], help=settings["logprobs"]["help"])
-
-    top_logprobs = st.sidebar.number_input("Top Logprobs", min_value=settings["top_logprobs"]["min"], max_value=settings["top_logprobs"]["max"],
-                                           value=settings["top_logprobs"]["default"], help=settings["top_logprobs"]["help"])
-
-    max_tokens = st.sidebar.number_input("Max Tokens", min_value=settings["max_tokens"]["min"], max_value=settings["max_tokens"]["max"],
-                                         value=settings["max_tokens"]["default"], help=settings["max_tokens"]["help"])
-
-    n = st.sidebar.number_input("Number of Choices (n)", min_value=settings["n"]["min"], max_value=settings["n"]["max"],
-                                value=settings["n"]["default"], help=settings["n"]["help"])
-
-    stop = st.sidebar.text_area("Stop Sequences", json.dumps(settings["stop"]["default"]), help=settings["stop"]["help"])
-
-    stream_t = st.sidebar.toggle("Stream Output", value=settings["stream"]["default"], help=settings["stream"]["help"])
-
-    # Enable debug mode toggle inside advanced settings
-    st.session_state["debug"] = st.sidebar.toggle("Enable Debug Mode", value=False, help="Toggle to enable or disable debug mode for detailed insights.")
+# Toggle to enable/disable the display of CPU, Memory, and Model Health metrics
+display_metrics = toggle_display_metrics()
 
 # Layout for file upload and OCR option
 uploaded_file = st.file_uploader(
@@ -151,86 +101,6 @@ elif uploaded_file and uploaded_file.type.startswith("image/"):
         max_selections=2,
         placeholder="Choose Language(s)"
     )
-
-def clean_text(text):
-    """Cleans and normalizes text."""
-    if text is None:
-        return ""
-    if isinstance(text, list):
-        text = " ".join(item['text'] if isinstance(item, dict) and 'text' in item else str(item) for item in text)
-    if not isinstance(text, str):
-        raise TypeError(f"Expected a string for cleaning, but got {type(text)}")
-    text = unicodedata.normalize('NFKC', text)
-    text = re.sub(r'\s+', ' ', text)
-    text = re.sub(r'[^\w\s\u0600-\u06FF.,!?;:()\[\]{}\'"-]', '', text)
-    return text.strip()
-
-def split_text_semantically(text):
-    """Splits text into semantic chunks."""
-    return splitter.chunks(text)
-
-def extract_text_from_pdf(uploaded_file, use_ocr=False, languages=None):
-    """Extracts text from a PDF file using OCR or direct reading."""
-    doc = fitz.open(stream=uploaded_file.read(), filetype="pdf")
-    text = ""
-
-    if use_ocr and languages:
-        selected_codes = [language_codes[lang] for lang in languages]
-        reader = easyocr.Reader(selected_codes, model_storage_directory=EASYOCR_MODELS_PATH)
-        for page_num in range(len(doc)):
-            page = doc.load_page(page_num)
-            pix = page.get_pixmap()
-            img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
-            result = reader.readtext(np.array(img), detail=0)
-            text += "\n".join(result) + "\n"
-    else:
-        text = "".join([page.get_text() for page in doc])
-
-    return text
-
-def extract_text_from_image(uploaded_file, languages=None):
-    """Extracts text from an image file using OCR."""
-    if languages:
-        selected_codes = [language_codes[lang] for lang in languages]
-        reader = easyocr.Reader(selected_codes, model_storage_directory=EASYOCR_MODELS_PATH)
-        result = reader.readtext(uploaded_file.getvalue(), detail=0)
-        text = "\n".join(result)
-        return text
-    else:
-        st.warning("Please select at least one language for OCR.")
-        return None
-
-def extract_text_from_file(uploaded_file, ocr_option=None, languages=None):
-    """Extracts text from various file types."""
-    file_type = uploaded_file.type
-    if file_type == "text/plain":
-        return uploaded_file.getvalue().decode("utf-8")
-    elif file_type == "application/pdf":
-        if ocr_option:
-            return extract_text_from_pdf(uploaded_file, use_ocr=(ocr_option == "Read With OCR"), languages=languages)
-        else:
-            st.warning("Please select an option to continue.")
-            return None
-    elif file_type.startswith("image/"):
-        return extract_text_from_image(uploaded_file, languages)
-    elif file_type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
-        doc = docx.Document(uploaded_file)
-        return "\n".join([para.text for para in doc.paragraphs])
-    else:
-        st.error("Unsupported file type.")
-        return None
-
-def display_debug_info(summary, prompt, messages):
-    """Displays debug information in a table format if debug mode is enabled."""
-    if st.session_state["debug"]:
-        debug_data = {
-            "Instruction Prompt": [st.session_state["system_instruction"]],
-            "User Message": [prompt],
-            "Assistant Message": [summary],
-            "Message History": [str(messages)]
-        }
-        st.subheader("Debug Information")
-        st.table(debug_data)
 
 def extract_and_summarize(uploaded_file, ocr_option=None, languages=None):
     """Extracts text from the uploaded file and summarizes it."""
@@ -268,24 +138,26 @@ def extract_and_summarize(uploaded_file, ocr_option=None, languages=None):
                         if previous_summaries.strip():
                             messages.append({"role": "assistant", "content": previous_summaries.strip()})
                         stream = client.chat.completions.create(
-                            model=OPENAI_MODEL,
+                            model=st.session_state["openai_model"],
                             messages=messages,
-                            temperature=temperature,
-                            top_p=top_p,
-                            frequency_penalty=frequency_penalty,
-                            presence_penalty=presence_penalty,
-                            seed=seed,
-                            logit_bias=eval(logit_bias),
-                            logprobs=logprobs,
-                            top_logprobs=top_logprobs if logprobs else None,
-                            max_tokens=max_tokens,
-                            n=n,
-                            stop=json.loads(stop),
-                            stream=stream_t,
+                            temperature=advanced_settings["temperature"],
+                            top_p=advanced_settings["top_p"],
+                            frequency_penalty=advanced_settings["frequency_penalty"],
+                            presence_penalty=advanced_settings["presence_penalty"],
+                            seed=advanced_settings["seed"],
+                            logit_bias=eval(advanced_settings["logit_bias"]),
+                            logprobs=advanced_settings["logprobs"],
+                            top_logprobs=advanced_settings["top_logprobs"] if advanced_settings["logprobs"] else None,
+                            max_tokens=advanced_settings["max_tokens"],
+                            n=advanced_settings["n"],
+                            stop=json.loads(advanced_settings["stop"]) if advanced_settings["stop"] else None,
+                            stream=advanced_settings["stream_t"],
                         )
                         response = st.write_stream(stream)
                     st.session_state["messages"].append({"role": "assistant", "content": response})
-                    display_debug_info(response, prompt, st.session_state["messages"])
+                    # Display debug information if debug mode is enabled
+                    if st.session_state.get("debug", False):
+                        display_debug_info(response, prompt, st.session_state["messages"])
                     previous_summaries += response + "\n"  # Accumulate summaries for context
 
             except APIConnectionError as e:
@@ -314,3 +186,6 @@ if uploaded_file:
 # Chat input for additional text
 if prompt := st.chat_input("Or enter text here to get a summary"):
     extract_and_summarize(st.file_uploader("Upload a file", key="chat_file_uploader"))
+
+# Refresh CPU, Memory, and Health status if metrics display is enabled
+refresh_metrics(display_metrics)
