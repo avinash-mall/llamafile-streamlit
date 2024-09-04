@@ -13,3 +13,4 @@ numpy==1.25.2
 sentence-transformers
 tokenizers
 semantic-text-splitter
+elasticsearch
