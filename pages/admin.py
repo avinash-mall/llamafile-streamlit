@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 import warnings
 import pytz
 import pandas as pd
-from utils import model, split_text_semantically, clean_text, extract_text_from_pdf, extract_text_from_file, language_options, language_codes, refresh_metrics
+from utils import model, split_text_semantically, clean_text, extract_text_from_pdf, extract_text_from_file, language_options, language_codes, refresh_metrics, display_advanced_settings, toggle_display_metrics
 
 # Suppress Elasticsearch system indices warnings
 warnings.filterwarnings("ignore", category=ElasticsearchWarning)
@@ -21,10 +21,25 @@ es = Elasticsearch(
     basic_auth=(os.getenv('ES_USERNAME'), os.getenv('ES_PASSWORD'))
 )
 
+# Set page configuration for a wide layout
+st.set_page_config(page_title="🔧 Admin Page", page_icon="🔧", layout="wide")
+
 # Admin page title
 st.title("🔧 Admin Page")
 
-# Utility Functions
+# Sidebar settings
+st.sidebar.title("Admin Settings")
+
+# Advanced settings toggle
+settings_visible = st.sidebar.toggle("Show/Hide Advanced Settings", value=False)
+advanced_settings = display_advanced_settings(settings_visible) if settings_visible else {}
+
+# Toggle to enable/disable the display of CPU, Memory, and Model Health metrics
+display_metrics = toggle_display_metrics()
+
+# Dropdown for index management actions
+index_action = st.sidebar.selectbox("Select Action", ["Create Index", "Delete Index", "List Documents"])
+
 def generate_unique_id(text):
     hash_object = hashlib.sha256()
     hash_object.update(text.encode('utf-8'))
@@ -120,12 +135,6 @@ def delete_index(index_name):
     es.indices.delete(index=index_name)
     st.success(f"Index '{index_name}' deleted successfully")
 
-# Sidebar settings
-st.sidebar.title("Admin Settings")
-
-# Dropdown for index management actions
-index_action = st.sidebar.selectbox("Select Action", ["Create Index", "Delete Index", "List Documents"])
-
 if index_action == "Create Index":
     st.sidebar.subheader("Create a New Index")
     new_index_name = st.sidebar.text_input("New Index Name")
@@ -202,6 +211,5 @@ if uploaded_files:
 
         st.success(f"All documents have been indexed successfully in '{index_for_upload}'.")
 
-# Refresh CPU, Memory, and Health status if metrics display is enabled
-display_metrics = st.sidebar.checkbox("Display CPU, Memory, and Model Health")
+# Automatically refresh CPU, Memory, and Health status every 5 seconds if metrics display is enabled
 refresh_metrics(display_metrics)
