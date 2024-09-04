@@ -5,6 +5,7 @@ from openai import OpenAI, APIConnectionError, APIStatusError, RateLimitError
 from elasticsearch import Elasticsearch, exceptions, ElasticsearchWarning
 from sentence_transformers import SentenceTransformer
 from dotenv import load_dotenv
+from datetime import datetime
 
 from utils import (
     append_date_time_to_prompt,
@@ -12,17 +13,20 @@ from utils import (
     display_advanced_settings,
     refresh_metrics,
     toggle_display_metrics,
-    search_elasticsearch
+    search_elasticsearch,
+    display_debug_info
 )
 
 es = Elasticsearch(
     hosts=[os.getenv('ES_HOST_URL')],
     basic_auth=(os.getenv('ES_USERNAME'), os.getenv('ES_PASSWORD'))
 )
-
+# Function to format timestamp
+def format_timestamp(iso_timestamp):
+    dt = datetime.fromisoformat(iso_timestamp)
+    return dt.strftime("%Y-%m-%d %H:%M:%S")
 # Load environment variables
 load_dotenv()
-
 
 # Initialize SentenceTransformer model
 model = SentenceTransformer(os.getenv("MODEL_PATH"))
@@ -32,7 +36,6 @@ OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL")
 instruction_prompt = os.getenv("INSTRUCTION_PROMPT")
-
 
 # Set page configuration
 st.set_page_config(page_title="RAG Chatbot", page_icon="💬", layout="wide")
@@ -94,6 +97,13 @@ if prompt := st.chat_input("How can I help you?"):
                     context_chunks = [hit['_source']['text'] for hit in hits]
                     document_names = [hit['_source']['document_name'] for hit in hits]
                     timestamps = [hit['_source']['timestamp'] for hit in hits]
+                    # Remove duplicates (in case the same document appears multiple times)
+                    unique_document_names = list(set(document_names))
+                    unique_timestamps = list(set(timestamps))
+
+                # Format timestamps for better readability
+                unique_timestamps = [format_timestamp(ts) for ts in unique_timestamps]
+
                 context = "\n".join(context_chunks)
 
                 # Prepare the full conversation history
@@ -113,6 +123,7 @@ if prompt := st.chat_input("How can I help you?"):
                 messages.append({"role": "user", "content": prompt})
 
                 # Call the LLM API with the full conversation and new context
+                # noinspection PyTypeChecker
                 stream = client.chat.completions.create(
                     model=st.session_state["openai_model"],
                     messages=messages,
@@ -130,8 +141,19 @@ if prompt := st.chat_input("How can I help you?"):
                     stream=advanced_settings["stream_t"],
                 )
 
+                # Format the reference and added on information
+                reference_info = "**Reference**: " + ", ".join(unique_document_names)
+                added_on_info = "**Added on**: " + ", ".join(unique_timestamps)
+
+                # Display the information before the LLM response
+                st.markdown(reference_info)
+                st.markdown(added_on_info)
+
                 response = st.write_stream(stream)
             st.session_state.messages.append({"role": "assistant", "content": response})
+            # Display Debug Information
+            display_debug_info(summary=response, prompt=prompt, messages=messages)
+
 
     except APIConnectionError as e:
         st.error("The server could not be reached.")
