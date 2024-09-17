@@ -135,6 +135,9 @@ def refresh_metrics(display_metrics):
 
 def append_date_time_to_prompt(prompt_content, append_date_time):
     """Append date and time information to the selected prompt content if enabled."""
+    if prompt_content is None:
+        prompt_content = ""  # Initialize as an empty string if None
+
     if append_date_time:
         now = datetime.now().astimezone()
         current_time = now.strftime("%H:%M:%S")
@@ -146,6 +149,7 @@ def append_date_time_to_prompt(prompt_content, append_date_time):
         prompt_content += "\n" + date_time_info
 
     return prompt_content
+
 
 def clean_text(text):
     """Cleans and normalizes text."""
@@ -273,3 +277,10 @@ def get_model_health():
             return "unknown"
     except Exception as e:
         return f"error ({str(e)})"
+
+def clear_chat_history():
+    """Clears the chat history stored in session state."""
+    if "messages" in st.session_state:
+        st.session_state["messages"] = []
+    if "system_instruction" in st.session_state:
+        st.session_state["system_instruction"] = None
