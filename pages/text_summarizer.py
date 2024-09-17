@@ -15,6 +15,7 @@ from utils import (
     toggle_display_metrics,
     refresh_metrics,
     get_model_health,
+    clear_chat_history
 )
 
 # Load environment variables from .env file
@@ -29,12 +30,15 @@ SYSTEM_INSTRUCTION = os.getenv("SYSTEM_INSTRUCTION", "You're a Text Summarizer..
 st.set_page_config(layout="wide")
 st.title("💬 Text Summarizer")
 
+# Call the clear_chat_history function whenever the page loads
+clear_chat_history()
+
 # Initialize the OpenAI client
 client = OpenAI(base_url=f"{OPENAI_BASE_URL}/v1", api_key=OPENAI_API_KEY)
 
 # Initialize session state attributes specifically for this page
 st.session_state["messages"] = []  # Reset messages when visiting this page
-st.session_state["system_instruction"] = SYSTEM_INSTRUCTION  # Set from .env variable for this page
+selected_prompt_content = SYSTEM_INSTRUCTION  # Set from .env variable for this page
 
 # Initialize session state variables
 if "openai_model" not in st.session_state:
@@ -53,9 +57,18 @@ language_codes = {lang["language"]: lang["code"] for lang in ocr_languages}
 # Sidebar settings
 st.sidebar.title("Settings")
 
-# Toggle for appending date and time to the system prompt
+# Add a button to clear the chat history
+if st.sidebar.button("Clear Chat History"):
+    clear_chat_history()
+    st.success("Chat history cleared.")
+
+
+# Setting to enable/disable appending date and time to the prompt
 append_date_time = st.sidebar.toggle("Append Date and Time to Prompt", value=True)
-st.session_state["system_instruction"] = append_date_time_to_prompt(st.session_state["system_instruction"], append_date_time)
+selected_prompt_content = append_date_time_to_prompt(selected_prompt_content, append_date_time)
+
+# Store the selected system instruction prompt in session state
+st.session_state["system_instruction"] = selected_prompt_content
 
 # Toggle to show/hide advanced settings
 settings_visible = st.sidebar.toggle("Show/Hide Advanced Settings", value=False)
