@@ -14,7 +14,8 @@ from utils import (
     refresh_metrics,
     toggle_display_metrics,
     search_elasticsearch,
-    display_debug_info
+    display_debug_info,
+    clear_chat_history
 )
 
 es = Elasticsearch(
@@ -28,6 +29,9 @@ def format_timestamp(iso_timestamp):
 # Load environment variables
 load_dotenv()
 
+# Call the clear_chat_history function whenever the page loads
+clear_chat_history()
+
 # Initialize SentenceTransformer model
 model = SentenceTransformer(os.getenv("MODEL_PATH"))
 
@@ -35,7 +39,7 @@ model = SentenceTransformer(os.getenv("MODEL_PATH"))
 OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL")
-instruction_prompt = os.getenv("INSTRUCTION_PROMPT")
+selected_prompt_content = os.getenv("INSTRUCTION_PROMPT")
 
 # Set page configuration
 st.set_page_config(page_title="RAG Chatbot", page_icon="💬", layout="wide")
@@ -50,15 +54,21 @@ if 'messages' not in st.session_state:
 if "openai_model" not in st.session_state:
     st.session_state["openai_model"] = OPENAI_MODEL
 
-if "system_instruction" not in st.session_state:
-    st.session_state["system_instruction"] = instruction_prompt
 
 # Sidebar settings
 st.sidebar.title("Settings")
 
-# Toggle for appending date and time to the prompt
+# Add a button to clear the chat history
+if st.sidebar.button("Clear Chat History"):
+    clear_chat_history()
+    st.success("Chat history cleared.")
+
+# Setting to enable/disable appending date and time to the prompt
 append_date_time = st.sidebar.toggle("Append Date and Time to Prompt", value=True)
-st.session_state["system_instruction"] = append_date_time_to_prompt(st.session_state["system_instruction"], append_date_time)
+selected_prompt_content = append_date_time_to_prompt(selected_prompt_content, append_date_time)
+
+# Store the selected system instruction prompt in session state
+st.session_state["system_instruction"] = selected_prompt_content
 
 # Toggle to show/hide advanced settings
 settings_visible = st.sidebar.toggle("Show/Hide Advanced Settings", value=False)
@@ -93,6 +103,9 @@ if prompt := st.chat_input("How can I help you?"):
                 context_chunks = []
                 document_names = []
                 timestamps = []
+                # Initialize variables to avoid errors if no hits are found
+                unique_document_names = []
+                unique_timestamps = []
                 if hits:
                     context_chunks = [hit['_source']['text'] for hit in hits]
                     document_names = [hit['_source']['document_name'] for hit in hits]
