@@ -10,7 +10,8 @@ from utils import (
     load_advanced_settings,
     display_advanced_settings,
     refresh_metrics,
-    toggle_display_metrics
+    toggle_display_metrics,
+    clear_chat_history
 )
 
 # Load environment variables
@@ -37,6 +38,11 @@ with open('settings.json') as f:
 
 # Sidebar settings
 st.sidebar.title("Settings")
+
+# Add a button to clear the chat history
+if st.sidebar.button("Clear Chat History"):
+    clear_chat_history()
+    st.success("Chat history cleared.")
 
 # Dropdown for selecting system instruction prompt
 prompt_names = [prompt['name'] for prompt in system_prompts]
@@ -67,6 +73,7 @@ if "messages" not in st.session_state:
 
 if "debug" not in st.session_state:
     st.session_state["debug"] = False
+
 
 # Load advanced settings
 settings_visible = st.sidebar.toggle("Show/Hide Advanced Settings", value=False)
