@@ -1,0 +1,32 @@
+app:
+  domain: http://localhost:8501/
+cookie:
+  expiry_days: 30
+  key: streamlitkey
+  name: streamlit
+credentials:
+  usernames:
+    admin:
+      email: admin@gmail.com
+      failed_login_attempts: 0
+      logged_in: false
+      name: Administrator
+      password: $2b$12$gT9Al9iK6Et9HRdbyebc6.26RpX17Y3RKMyES2zacN51pP8o04fx2
+    abc:
+      email: abc@gmail.com
+      failed_login_attempts: 0
+      logged_in: false
+      name: abc
+      password: $2b$12$9VBipsw9kPq3mL6JzDUHyu0QAgR0YhRSxM1NexocCowNrUyiPdBxu
+    user100:
+      email: user100@gmail.com
+      name: new user
+      password: $2b$12$LYsaJPfc6jJEYjGoQQk66u/V8tziselnCzsKiJtJPfifJ5GRE7Vte
+pre-authorized:
+  emails:
+  - admin@gmail.com
+smtp:
+  port: 25
+  server: smtp.freesmtpservers.com
+  use_tls: false
+  username: test@myapp.com
