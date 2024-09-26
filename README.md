@@ -16,7 +16,7 @@ It offers three main features:
 -    manage-documents.py: Admin interface for indexing, managing, and deleting documents.
 -    utils.py: Contains utility functions for authentication, email notifications, and Elasticsearch management.
 -    downloads.py: Downloads models like SentenceTransformer and EasyOCR for local use.
--    config.yaml: Stores configuration settings for authentication, email, and more.
+-    config.yaml: Stores configuration settings for authentication, email, and more. **Note**: admin user password is admin.
 -    settings.json: Configuration file for OpenAI API settings.
 
 # Configure settings:
