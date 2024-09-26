@@ -9,8 +9,10 @@ python-docx
 streamlit-autorefresh
 easyocr
 Pillow
-numpy==1.25.2
+numpy
 sentence-transformers
 tokenizers
 semantic-text-splitter
 elasticsearch
+streamlit-authenticator
+pyyaml
