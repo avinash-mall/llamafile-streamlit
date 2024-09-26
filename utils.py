@@ -1,3 +1,4 @@
+import hashlib
 import json
 import os
 import re
@@ -6,6 +7,8 @@ import warnings
 from datetime import datetime
 from urllib.parse import urlencode
 
+import pandas as pd
+import pytz
 from elasticsearch import Elasticsearch, exceptions, ElasticsearchWarning
 import fitz  # PyMuPDF
 import docx
@@ -550,6 +553,105 @@ def clear_chat_history():
     if "system_instruction" in st.session_state:
         st.session_state["system_instruction"] = None
 
+
+def create_index(index_name):
+    field_name = "embedding"
+    similarity_type = os.getenv("SIMILARITY_TYPE", "cosine")
+    default_dims = int(os.getenv("DEFAULT_DIMS", 1024))
+
+    if not es.indices.exists(index=index_name):
+        mappings = {
+            "properties": {
+                field_name: {
+                    "type": "dense_vector",
+                    "dims": default_dims,
+                    "index": "true",
+                    "similarity": similarity_type,
+                }
+            }
+        }
+        es.indices.create(index=index_name, body={"mappings": mappings})
+        st.success(
+            f"Index '{index_name}' with {default_dims} dimensions and similarity '{similarity_type}' created successfully")
+    else:
+        st.error("Index already exists")
+
+
+
+def delete_index(index_name):
+    if not es.indices.exists(index=index_name):
+        st.error("Index not found")
+        return
+    es.indices.delete(index=index_name)
+    st.success(f"Index '{index_name}' deleted successfully")
+
+def generate_unique_id(text):
+    hash_object = hashlib.sha256()
+    hash_object.update(text.encode('utf-8'))
+    unique_id = hash_object.hexdigest()
+    return unique_id
+
+def index_text(index_name, text, document_name, total_files, file_number):
+    clean_text_content = clean_text(text)
+    local_time = datetime.now()
+    utc_time = local_time.astimezone(pytz.utc)
+    timestamp = utc_time.isoformat()
+    chunks = split_text_semantically(clean_text_content)
+    total_chunks = len(chunks)
+    progress_text = f"Indexing document {file_number}/{total_files}. Please wait..."
+    my_bar = st.progress(0, text=progress_text)
+
+    for i, chunk in enumerate(chunks):
+        if chunk:
+            doc_id = generate_unique_id(chunk)
+            embedding = model.encode(chunk).tolist()
+            body = {
+                "text": chunk,
+                "embedding": embedding,
+                "document_name": document_name,
+                "timestamp": timestamp
+            }
+            es.index(index=index_name, id=doc_id, body=body)
+            my_bar.progress((i + 1) / total_chunks, text=progress_text)
+
+    my_bar.empty()
+
+
+def list_documents(index_name):
+    query = {
+        "size": 10000,
+        "_source": ["document_name", "timestamp"],
+        "query": {
+            "match_all": {}
+        }
+    }
+    response = es.search(index=index_name, body=query)
+
+    document_data = {}
+    for hit in response["hits"]["hits"]:
+        source = hit["_source"]
+        doc_name = source.get("document_name", "Unknown Document")
+        timestamp = source.get("timestamp", "No Timestamp")
+
+        if doc_name in document_data:
+            document_data[doc_name]["number_of_chunks"] += 1
+        else:
+            document_data[doc_name] = {
+                "document_name": doc_name,
+                "number_of_chunks": 1,
+                "timestamp": timestamp
+            }
+
+    if not document_data:
+        return pd.DataFrame(columns=["document_name", "number_of_chunks", "date_time_added"])
+
+    document_df = pd.DataFrame(document_data.values())
+    document_df["timestamp"] = pd.to_datetime(document_df["timestamp"], errors='coerce').dt.strftime('%Y-%m-%d %H:%M:%S')
+    document_df = document_df.rename(columns={"timestamp": "date_time_added"})
+
+    return document_df
+
+
 def setup_authentication_menu():
     # Setup Authenticator
     authenticator, config = setup_authenticator()
@@ -569,6 +671,13 @@ def setup_authentication_menu():
     # Handle Authentication Logic
     if st.session_state["authentication_status"]:
         st.markdown(f':thumbsup: Welcome *{name}*')
+        user_email = config['credentials']['usernames'][username]['email']
+        # Create a user-specific Elasticsearch index if it doesn't exist
+        index_name = f"user_{user_email.replace('@', '_').replace('.', '_')}"
+        if not es.indices.exists(index=index_name):
+            create_index(index_name)
+            st.toast(f"User-specific index '{index_name}' created.", icon="✅")
+
         with col2:
             # If the user is authenticated
             logout(authenticator)
@@ -580,7 +689,7 @@ def setup_authentication_menu():
             # Update details for authenticated users
             with st.popover("Update User Details"):
                 update_user(authenticator, config)
-        return name
+        return name, config
     elif st.session_state["authentication_status"] == False:
         st.toast('Incorrect Username or Password', icon="⚠️")
         with col2:
@@ -601,3 +710,5 @@ def setup_authentication_menu():
         with col4:
             with st.popover("Forgot Username"):
                 forgot_username(authenticator, config)
+    # Ensure that name and config are always returned
+    return None, config
