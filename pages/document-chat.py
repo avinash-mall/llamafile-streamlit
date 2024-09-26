@@ -42,17 +42,22 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL")
 selected_prompt_content = os.getenv("INSTRUCTION_PROMPT")
 
+ADMIN_EMAIL = os.getenv('ADMIN_EMAIL')
+
 # Set page configuration
 st.set_page_config(page_icon="💬", layout="wide")
 # Title of the app
 st.title("📚 Document Chatbot")
 
 # Setup Authenticator
-name = setup_authentication_menu()
+name, config = setup_authentication_menu()
 
 if st.session_state["authentication_status"]:
     # Initialize the OpenAI client
     client = OpenAI(base_url=f"{OPENAI_BASE_URL}/v1", api_key=OPENAI_API_KEY)
+
+    user_email = config['credentials']['usernames'][st.session_state["username"]]['email']
+    user_index = f"user_{user_email.replace('@', '_').replace('.', '_')}"
 
     # Initialize session state variables if they don't exist
     if 'messages' not in st.session_state:
@@ -65,7 +70,6 @@ if st.session_state["authentication_status"]:
 
     if "openai_model" not in st.session_state:
         st.session_state["openai_model"] = OPENAI_MODEL
-
 
     # Sidebar settings
     st.sidebar.title("Settings")
@@ -90,9 +94,11 @@ if st.session_state["authentication_status"]:
     display_metrics = toggle_display_metrics()
 
     # Dropdown for selecting Elasticsearch index
-    indexes = [index for index in es.indices.get_alias(index="*").keys() if not index.startswith('.')]
-    selected_index = st.sidebar.selectbox("Select Elasticsearch Index", options=indexes)
-
+    if user_email == ADMIN_EMAIL:
+        indexes = [index for index in es.indices.get_alias(index="*").keys() if not index.startswith('.')]
+        selected_index = st.sidebar.selectbox("Select Elasticsearch Index", options=indexes)
+    else:
+        selected_index = user_index
 
     # Chat input
     if prompt := st.chat_input("How can I help you?"):
