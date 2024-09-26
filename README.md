@@ -2,18 +2,36 @@
 
 This repository contains a Streamlit application for interacting with an OpenAI compatible model. The application supports various file uploads, real-time system monitoring, and customizable prompts for dynamic interaction with the model.
 
-It offers two main features:
-1. **LLamafile Chatbot**: An interactive chatbot interface.
-2. **Text Summarizer**: A tool for summarizing text from various file formats.
+It offers three main features:
+1. **AI Chatbot**: An interactive chatbot interface.
+2. **Document Summarizer**: A tool for summarizing text from various file formats.
+3. **Document Chat**: A tool to chat with your documents per user.
+4. **User Authentication**: A tool for users to register, login, update.
 
+# Key Files:
+
+-    app.py: Main application entry point. Handles system prompt selection, page authentication, and overall UI.
+-    document-summarize.py: Allows users to upload files and summarizes document content.
+-    document-chat.py: Enables chat functionality with document content using OpenAI and Elasticsearch.
+-    manage-documents.py: Admin interface for indexing, managing, and deleting documents.
+-    utils.py: Contains utility functions for authentication, email notifications, and Elasticsearch management.
+-    downloads.py: Downloads models like SentenceTransformer and EasyOCR for local use.
+-    config.yaml: Stores configuration settings for authentication, email, and more.
+-    settings.json: Configuration file for OpenAI API settings.
+
+# Configure settings:
+    Update .env, config.yaml and settings.json with your own values for OpenAI, Elasticsearch, and other settings.
+   
 ## Features
 
 - **OpenAI API Integration**: Easily interact with the OpenAI compatible model api using customizable prompts.
 - **Chatbot**: Interact with the AI model using a conversational interface.
-- **Text Summarizer**: Upload files in different formats (PDF, DOCX, images, etc.) and get concise summaries.
+- **Document Summarizer**: Upload files in different formats (PDF, DOCX, images, etc.) and get concise summaries.
 - **OCR Support**: Extract text from images and scanned PDFs using EasyOCR.
 - **Advanced Settings**: Customize parameters such as temperature, top-p, frequency penalty, presence penalty, and more.
 - **Real-time Metrics**: Display CPU, memory usage, and model health status.
+- **Document Management**: Manage your documents, indices.
+- **User Management**: Manage Users.
 
 ## Installation
 
