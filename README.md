@@ -44,12 +44,14 @@ cd llamafile-streamlit
 ```
 2. **Change the settings**
    a. Edit the .env and change at minimum the following:
-       `OPENAI_BASE_URL=http://<your ip address>:8080` # Replace with your OPENAI API host URL
-       `ES_HOST_URL=http://<your ip address>:9200`  # Replace with your Elasticsearch host URL
-       `ES_USERNAME=elastic`  # Replace with your Elasticsearch username
-       `ES_PASSWORD=changeme`  # Replace with your Elasticsearch password
-   b. Edit the config.yaml and at minimum the following:
+       ```env
+           OPENAI_BASE_URL=http://<your ip address>:8080 # Replace with your OPENAI API host URL
+           ES_HOST_URL=http://<your ip address>:9200  # Replace with your Elasticsearch host URL
+           ES_USERNAME=elastic  # Replace with your Elasticsearch username
+           ES_PASSWORD=changeme  # Replace with your Elasticsearch password
        ```
+   b. Edit the config.yaml and at minimum the following:
+       ```env
        smtp:
           port: 25
           server: smtp.freesmtpservers.com
@@ -58,10 +60,12 @@ cd llamafile-streamlit
        app:
           domain: http://<your ip address or host for app>:8501/
        ```
-3. **Run the app**
+4. **Run the app**
 ```bash
 docker compose up -d
 ```
+
+### Run from source
 
 ### Prerequisites
 
@@ -92,6 +96,16 @@ Edit `.env` file in the root directory of the project with the following content
  SYSTEM_INSTRUCTION="Your system instruction here for only text summarizer."
  EASYOCR_MODELS_PATH="./models/easyocr"
  ```
+Edit the config.yaml and at minimum the following:
+```env
+smtp:
+    port: 25
+    server: smtp.freesmtpservers.com
+    use_tls: false
+    username: test@myapp.com
+app:
+    domain: http://<your ip address or host for app>:8501/
+```
 Replace the placeholders with your actual OpenAI API information.
 
 4. **Download The Models**:
