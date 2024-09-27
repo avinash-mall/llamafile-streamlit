@@ -1,0 +1,13 @@
+services:
+  aichat:
+    build: .
+    container_name: aichat
+    volumes:
+      - ./.env:/llamafile-streamlit/.env
+      - ./config.yaml:/llamafile-streamlit/config.yaml
+      - ./settings.json:/llamafile-streamlit/settings.json
+      - ./system_prompts.json:/llamafile-streamlit/system_prompts.json
+    ports:
+      - 8501:8501
+    environment:
+      TZ: "Asia/Delhi"
