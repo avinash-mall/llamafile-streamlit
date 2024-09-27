@@ -44,22 +44,22 @@ cd llamafile-streamlit
 ```
 2. **Change the settings**
    a. Edit the .env and change at minimum the following:
-       ```env
-           OPENAI_BASE_URL=http://<your ip address>:8080 # Replace with your OPENAI API host URL
-           ES_HOST_URL=http://<your ip address>:9200  # Replace with your Elasticsearch host URL
-           ES_USERNAME=elastic  # Replace with your Elasticsearch username
-           ES_PASSWORD=changeme  # Replace with your Elasticsearch password
-       ```
+```env
+OPENAI_BASE_URL=http://<your ip address>:8080 # Replace with your OPENAI API host URL
+ES_HOST_URL=http://<your ip address>:9200  # Replace with your Elasticsearch host URL
+ES_USERNAME=elastic  # Replace with your Elasticsearch username
+ES_PASSWORD=changeme  # Replace with your Elasticsearch password
+```
    b. Edit the config.yaml and at minimum the following:
-       ```env
-       smtp:
-          port: 25
-          server: smtp.freesmtpservers.com
-          use_tls: false
-          username: test@myapp.com
-       app:
-          domain: http://<your ip address or host for app>:8501/
-       ```
+```env
+smtp:
+    port: 25
+    server: smtp.freesmtpservers.com
+    use_tls: false
+    username: test@myapp.com
+app:
+    domain: http://<your ip address or host for app>:8501/
+```
 4. **Run the app**
 ```bash
 docker compose up -d
