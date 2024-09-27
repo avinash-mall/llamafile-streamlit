@@ -35,6 +35,34 @@ It offers three main features:
 
 ## Installation
 
+### Run in Docker
+
+1. **Clone the Repository**:
+```bash
+git clone https://github.com/avinash-mall/llamafile-streamlit.git
+cd llamafile-streamlit
+```
+2. **Change the settings**
+   a. Edit the .env and change at minimum the following:
+       `OPENAI_BASE_URL=http://<your ip address>:8080` # Replace with your OPENAI API host URL
+       `ES_HOST_URL=http://<your ip address>:9200`  # Replace with your Elasticsearch host URL
+       `ES_USERNAME=elastic`  # Replace with your Elasticsearch username
+       `ES_PASSWORD=changeme`  # Replace with your Elasticsearch password
+   b. Edit the config.yaml and at minimum the following:
+       ```
+       smtp:
+          port: 25
+          server: smtp.freesmtpservers.com
+          use_tls: false
+          username: test@myapp.com
+       app:
+          domain: http://<your ip address or host for app>:8501/
+       ```
+3. **Run the app**
+```bash
+docker compose up -d
+```
+
 ### Prerequisites
 
 - Python 3.8 or higher
