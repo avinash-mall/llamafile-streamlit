@@ -140,22 +140,6 @@ def generate_verification_token():
     return secrets.token_urlsafe(16)
 
 
-# Register function
-# def register_user(authenticator, config):
-#     try:
-#         email_of_registered_user, username_of_registered_user, name_of_registered_user = authenticator.register_user(
-#             location='main',
-#             pre_authorization=False,
-#             clear_on_submit=True,
-#             key='RegisterWidget'
-#         )
-#         if email_of_registered_user:
-#             st.toast('User registered successfully', icon="✅")
-#             update_yaml(config)
-#     except Exception as e:
-#         st.toast(e, icon="⚠️")
-
-
 # Temporary storage for unverified users (can be a dictionary or external storage)
 unverified_users = {}
 
@@ -468,12 +452,13 @@ def extract_text_from_pdf(uploaded_file, use_ocr=False, languages=None):
         return None
 
 
-def extract_text_from_image(uploaded_file, languages=None):
+def extract_text_from_image(uploaded_file, languages):
     """Extracts text from an image file using OCR."""
     if languages:
-        selected_codes = [language_codes[lang] for lang in languages]
+        selected_codes = languages
         reader = easyocr.Reader(selected_codes, model_storage_directory=EASYOCR_MODELS_PATH)
-        result = reader.readtext(uploaded_file.getvalue(), detail=0)
+        image = Image.open(uploaded_file)
+        result = reader.readtext(np.array(image), detail=0)
         text = "\n".join(result)
         return text
     else:
