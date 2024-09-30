@@ -113,9 +113,9 @@ if st.session_state["authentication_status"]:
             index_for_upload = st.selectbox("Select Index to Upload Document", options=indexes)
         else:
             index_for_upload = user_index
-        extraction_method = st.selectbox("Choose extraction method for all PDFs", ["Read Normal", "Read Using PDF OCR"])
+        extraction_method = st.selectbox("Choose extraction method for all PDFs", ["Read Normal", "Read Using OCR"])
 
-        if extraction_method == "Read Using PDF OCR":
+        if extraction_method == "Read Using OCR":
             selected_languages = st.multiselect(
                 "Choose OCR Languages for all PDFs",
                 options=list(language_options.keys()),  # Correct language codes
@@ -137,8 +137,12 @@ if st.session_state["authentication_status"]:
                 my_bar = st.progress(0, text=progress_text)
 
                 if file_type == "application/pdf":
-                    file_text = extract_text_from_pdf(uploaded_file, extraction_method == "Read Using PDF OCR",
+                    file_text = extract_text_from_pdf(uploaded_file, extraction_method == "Read Using OCR",
                                                       selected_languages)
+                    
+                elif file_type.startswith("image/"):
+                    file_text = extract_text_from_file(uploaded_file, languages=selected_languages)
+                    
                 else:
                     file_text = extract_text_from_file(uploaded_file)
 
