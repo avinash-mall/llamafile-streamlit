@@ -19,6 +19,9 @@ from utils import (
     setup_authentication_menu
 )
 
+# Suppress Elasticsearch system indices warnings
+warnings.filterwarnings("ignore", category=ElasticsearchWarning)
+
 es = Elasticsearch(
     hosts=[os.getenv('ES_HOST_URL')],
     basic_auth=(os.getenv('ES_USERNAME'), os.getenv('ES_PASSWORD'))
