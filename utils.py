@@ -31,6 +31,9 @@ from email.message import EmailMessage
 import secrets
 from urllib.parse import parse_qs
 
+# Suppress Elasticsearch system indices warnings
+warnings.filterwarnings("ignore", category=ElasticsearchWarning)
+
 def send_email(subject, body, to_email, config):
     msg = EmailMessage()
     msg.set_content(body)
@@ -276,7 +279,8 @@ load_dotenv()
 # Initialize Elasticsearch with authentication
 es = Elasticsearch(
     hosts=[os.getenv('ES_HOST_URL')],
-    basic_auth=(os.getenv('ES_USERNAME'), os.getenv('ES_PASSWORD'))
+    basic_auth=(os.getenv('ES_USERNAME'), os.getenv('ES_PASSWORD')),
+    verify_certs=False
 )
 
 num_results = int(os.getenv("NUM_RESULTS", 10))  # Default to 10 if not provided
