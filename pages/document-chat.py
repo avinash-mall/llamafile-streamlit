@@ -24,7 +24,8 @@ warnings.filterwarnings("ignore", category=ElasticsearchWarning)
 
 es = Elasticsearch(
     hosts=[os.getenv('ES_HOST_URL')],
-    basic_auth=(os.getenv('ES_USERNAME'), os.getenv('ES_PASSWORD'))
+    basic_auth=(os.getenv('ES_USERNAME'), os.getenv('ES_PASSWORD')),
+    verify_certs=False
 )
 # Function to format timestamp
 def format_timestamp(iso_timestamp):
