@@ -125,11 +125,13 @@ if st.session_state["authentication_status"]:
                         context_chunks = [hit['_source']['text'] for hit in hits]
                         document_names = [hit['_source']['document_name'] for hit in hits]
                         timestamps = [hit['_source']['timestamp'] for hit in hits]
+                        score = [hit['_score'] for hit in hits]
                         # Create the DataFrame
                         df = pd.DataFrame({
                             'Document Name': document_names,
                             'ISO Timestamp': timestamps,
-                            'Context Chunks': context_chunks
+                            'Context Chunks': context_chunks,
+                            'Score': score
                         })
                         # Apply the format_timestamp function on 'ISO Timestamp' and store the result in a new column 'Formatted Timestamp'
                         df['Timestamp'] = df['ISO Timestamp'].apply(format_timestamp)
@@ -138,7 +140,8 @@ if st.session_state["authentication_status"]:
                         # Optionally drop the original 'ISO Timestamp' if no longer needed
                         df_unique = df_unique.drop(columns=['ISO Timestamp'])
                         df_unique = df_unique.drop(columns=['Context Chunks'])
-                    #context = "\n".join(context_chunks) if context_chunks else ""
+                    else:
+                        df_unique = pd.DataFrame([])
 
                     # Prepare the full conversation history
                     messages = [{"role": message["role"], "content": message["content"]}
