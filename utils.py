@@ -489,17 +489,13 @@ def search_elasticsearch(query, index_name):
     query_embedding = model.encode(query).tolist()
 
     try:
-        response = es.search(index=index_name, body={
-            "query": {
-                "knn": {
-                    "query_vector": query_embedding,
-                    "field": "embedding",
-                    "k": num_results,
-                    "num_candidates": num_candidates
-                }
-            },
-            "min_score": min_score
-        })
+        query_es = {
+            "query_vector": query_embedding,
+            "field": "embedding",
+            "k": num_results,
+            "num_candidates": num_candidates
+        }
+        response = es.search(index=index_name, knn=query_es, min_score=min_score)
         hits = response['hits']['hits']
         return hits
     except exceptions.RequestError as e:
