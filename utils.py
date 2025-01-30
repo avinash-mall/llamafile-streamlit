@@ -6,7 +6,8 @@ import unicodedata
 import warnings
 from datetime import datetime
 from urllib.parse import urlencode
-
+from scipy.spatial.distance import cosine
+from datetime import datetime
 import pandas as pd
 import pytz
 from elasticsearch import Elasticsearch, exceptions, ElasticsearchWarning
@@ -505,6 +506,91 @@ def search_elasticsearch(query, index_name):
     except Exception as e:
         st.toast(f"General Error: {str(e)}", icon="⚠️")
 
+def format_timestamp(iso_timestamp):
+    """Format the ISO timestamp to a human-readable format."""
+    dt = datetime.fromisoformat(iso_timestamp)
+    return dt.strftime("%Y-%m-%d %H:%M:%S")
+
+def hybrid_search(query, index_name, alpha=0.5, num_results=10):
+    """Perform hybrid search combining BM25 and neural reranking."""
+    query_embedding = model.encode(query).tolist()
+
+    # Step 1: Retrieve BM25 Results
+    bm25_query = {
+        "query": {
+            "match": {
+                "text": query
+            }
+        },
+        "size": num_results
+    }
+    bm25_results = es.search(index=index_name, body=bm25_query)["hits"]["hits"]
+
+    # Step 2: Retrieve Dense Vector (Neural) Results
+    knn_query = {
+        "query_vector": query_embedding,
+        "field": "embedding",
+        "k": num_results,
+        "num_candidates": num_candidates
+    }
+    knn_results = es.search(index=index_name, knn=knn_query)["hits"]["hits"]
+
+    # Step 3: Combine Scores using Weighted Sum
+    hybrid_results = {}
+
+    for hit in bm25_results:
+        doc_id = hit["_id"]
+        bm25_score = hit["_score"]
+        source = hit["_source"]
+        document_name = source.get("document_name", "Unknown Document")  # Get actual document name
+        timestamp = source.get("timestamp", None)
+        formatted_timestamp = format_timestamp(timestamp) if timestamp else "Unknown"
+
+        hybrid_results[doc_id] = {
+            "bm25_score": bm25_score,
+            "neural_score": 0,
+            "text": source["text"],
+            "document_name": document_name,
+            "timestamp": formatted_timestamp
+        }
+
+    for hit in knn_results:
+        doc_id = hit["_id"]
+        source = hit["_source"]
+        neural_score = 1 - cosine(query_embedding, source["embedding"])  # Cosine similarity
+        document_name = source.get("document_name", "Unknown Document")
+        timestamp = source.get("timestamp", None)
+        formatted_timestamp = format_timestamp(timestamp) if timestamp else "Unknown"
+
+        if doc_id in hybrid_results:
+            hybrid_results[doc_id]["neural_score"] = neural_score
+        else:
+            hybrid_results[doc_id] = {
+                "bm25_score": 0,
+                "neural_score": neural_score,
+                "text": source["text"],
+                "document_name": document_name,
+                "timestamp": formatted_timestamp
+            }
+
+    # Step 4: Normalize Scores
+    min_bm25 = min([r["bm25_score"] for r in hybrid_results.values()], default=0)
+    max_bm25 = max([r["bm25_score"] for r in hybrid_results.values()], default=1)
+
+    min_neural = min([r["neural_score"] for r in hybrid_results.values()], default=0)
+    max_neural = max([r["neural_score"] for r in hybrid_results.values()], default=1)
+
+    for doc_id in hybrid_results:
+        hybrid_results[doc_id]["bm25_score"] = (hybrid_results[doc_id]["bm25_score"] - min_bm25) / (max_bm25 - min_bm25 + 1e-5)
+        hybrid_results[doc_id]["neural_score"] = (hybrid_results[doc_id]["neural_score"] - min_neural) / (max_neural - min_neural + 1e-5)
+
+        # Final hybrid score (weighted sum)
+        hybrid_results[doc_id]["final_score"] = alpha * hybrid_results[doc_id]["bm25_score"] + (1 - alpha) * hybrid_results[doc_id]["neural_score"]
+
+    # Step 5: Return Sorted Results as List of Dictionaries
+    sorted_results = sorted(hybrid_results.items(), key=lambda x: x[1]["final_score"], reverse=True)
+
+    return [{"doc_id": doc[0], **doc[1]} for doc in sorted_results[:num_results]]
 
 def display_debug_info(summary, prompt, messages):
     """Displays debug information in a table format if debug mode is enabled."""
