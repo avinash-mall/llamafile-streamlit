@@ -14,6 +14,7 @@ from utils import (
     refresh_metrics,
     toggle_display_metrics,
     search_elasticsearch,
+    hybrid_search,
     display_debug_info,
     clear_chat_history,
     setup_authentication_menu
@@ -114,7 +115,8 @@ if st.session_state["authentication_status"]:
             with st.spinner("Thinking..."):
                 with st.chat_message("assistant") as assistant_message:
                     # Retrieve context from Elasticsearch
-                    hits = search_elasticsearch(prompt, selected_index)
+                    # hits = search_elasticsearch(prompt, selected_index)
+                    hits = hybrid_search(prompt, selected_index, alpha=0.7)
                     context_chunks = []
                     document_names = []
                     timestamps = []
@@ -122,23 +124,19 @@ if st.session_state["authentication_status"]:
                     unique_document_names = []
                     unique_timestamps = []
                     if hits:
-                        context_chunks = [hit['_source']['text'] for hit in hits]
-                        document_names = [hit['_source']['document_name'] for hit in hits]
-                        timestamps = [hit['_source']['timestamp'] for hit in hits]
-                        score = [hit['_score'] for hit in hits]
+                        context_chunks = [hit['text'] for hit in hits]
+                        document_names = [hit['document_name'] for hit in hits]
+                        timestamps = [hit['timestamp'] for hit in hits]
+                        score = [hit['final_score'] for hit in hits]
                         # Create the DataFrame
                         df = pd.DataFrame({
                             'Document Name': document_names,
-                            'ISO Timestamp': timestamps,
+                            'Timestamp': timestamps,
                             'Context Chunks': context_chunks,
                             'Score': score
                         })
-                        # Apply the format_timestamp function on 'ISO Timestamp' and store the result in a new column 'Formatted Timestamp'
-                        df['Timestamp'] = df['ISO Timestamp'].apply(format_timestamp)
                         # Remove duplicates based on 'Document Name' and 'Formatted Timestamp'
                         df_unique = df.drop_duplicates(subset=['Document Name', 'Timestamp'])
-                        # Optionally drop the original 'ISO Timestamp' if no longer needed
-                        df_unique = df_unique.drop(columns=['ISO Timestamp'])
                         df_unique = df_unique.drop(columns=['Context Chunks'])
                     else:
                         df_unique = pd.DataFrame([])
