@@ -16,3 +16,4 @@ semantic-text-splitter
 elasticsearch
 streamlit-authenticator
 pyyaml
+matplotlib
