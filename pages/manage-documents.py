@@ -1,20 +1,13 @@
 import streamlit as st
 import os
-import hashlib
-from datetime import datetime
+import time
 from elasticsearch import Elasticsearch, ElasticsearchWarning
 from dotenv import load_dotenv
 import warnings
-import pytz
-import pandas as pd
 from utils import (
-    model,
-    split_text_semantically,
-    clean_text,
     extract_text_from_pdf,
     extract_text_from_file,
     language_options,
-    language_codes,
     refresh_metrics,
     display_advanced_settings,
     toggle_display_metrics,
@@ -137,7 +130,8 @@ if st.session_state["authentication_status"]:
     elif index_action == "Delete Index":
         st.sidebar.subheader("Delete an Index")
         if user_email == ADMIN_EMAIL:
-            indexes = [index for index in es.indices.get_alias(index="*").keys() if not index.startswith('.')]
+            raw = es.cat.indices(format="json")
+            indexes = [entry["index"] for entry in raw if not entry["index"].startswith(".")]
             selected_index_name = st.sidebar.selectbox("Select Index to Delete", options=indexes)
         else:
             selected_index_name = user_index
@@ -147,7 +141,8 @@ if st.session_state["authentication_status"]:
     elif index_action == "List Documents":
         st.sidebar.subheader("List Documents in an Index")
         if user_email == ADMIN_EMAIL:
-            indexes = [index for index in es.indices.get_alias(index="*").keys() if not index.startswith('.')]
+            raw = es.cat.indices(format="json")
+            indexes = [entry["index"] for entry in raw if not entry["index"].startswith(".")]
             selected_index_name = st.sidebar.selectbox("Select Index to List Documents", options=indexes)
         else:
             selected_index_name = user_index
@@ -165,7 +160,8 @@ if st.session_state["authentication_status"]:
     if uploaded_files:
         # Admin can choose an index, otherwise the user's own index is selected
         if user_email == ADMIN_EMAIL:
-            indexes = [index for index in es.indices.get_alias(index="*").keys() if not index.startswith('.')]
+            raw = es.cat.indices(format="json")
+            indexes = [entry["index"] for entry in raw if not entry["index"].startswith(".")]
             index_for_upload = st.selectbox("Select Index to Upload Document", options=indexes)
         else:
             index_for_upload = user_index
