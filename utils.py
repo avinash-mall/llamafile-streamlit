@@ -23,15 +23,14 @@ from sentence_transformers import SentenceTransformer
 from streamlit_autorefresh import st_autorefresh
 from tokenizers import Tokenizer
 from semantic_text_splitter import TextSplitter
-import streamlit as st
-import yaml
-import streamlit_authenticator as stauth
 from yaml.loader import SafeLoader
 import smtplib
 from email.message import EmailMessage
+import yaml
+import streamlit as st
+import streamlit_authenticator as stauth
+from urllib.parse import urlencode
 import secrets
-from urllib.parse import parse_qs
-
 # Suppress Elasticsearch system indices warnings
 warnings.filterwarnings("ignore", category=ElasticsearchWarning)
 
@@ -82,31 +81,36 @@ def hash_plaintext_passwords(config):
 
     return config
 
-# Load config.yaml
-def load_auth_config():
-    with open('config.yaml') as file:
-        config = yaml.load(file, Loader=SafeLoader)
-    return config
+# ——————————————————————————————————————————————
+# CONFIG LOADING & AUTHENTICATOR INSTANTIATION
+# ——————————————————————————————————————————————
 
+def load_auth_config(path: str = "config.yaml") -> dict:
+    with open(path) as f:
+        return yaml.safe_load(f)
 
-# Update config.yaml after any changes (e.g., registration or password reset)
-def update_yaml(config):
-    with open('config.yaml', 'w') as file:
-        yaml.dump(config, file, default_flow_style=False)
+def update_yaml(config: dict, path: str = "config.yaml") -> None:
+    with open(path, "w") as f:
+        yaml.dump(config, f, default_flow_style=False)
 
+# Load once at import time
+_config = load_auth_config()
+if "hashed_done" not in st.session_state:
+    # Pre‑hash any plaintext passwords in-place
+    _config["credentials"] = stauth.Hasher.hash_passwords(_config["credentials"])
+    update_yaml(_config)                            # persist the hashes
+    st.session_state.hashed_done = True
 
-# Authentication setup
-def setup_authenticator():
-    config = load_auth_config()
-    authenticator = stauth.Authenticate(
-        config['credentials'],
-        config['cookie']['name'],
-        config['cookie']['key'],
-        config['cookie']['expiry_days'],
-        config['pre-authorized']
-    )
-    return authenticator, config
+authenticator = stauth.Authenticate(
+    credentials=_config["credentials"],
+    cookie_name=_config["cookie"]["name"],
+    key=_config["cookie"]["key"],
+    cookie_expiry_days=_config["cookie"]["expiry_days"],
+    auto_hash=False    # <- do NOT auto-hash again
+)
 
+# In‑memory store for users who have registered but not yet verified
+unverified_users: dict[str, dict] = {}
 
 # Login function
 def login(authenticator):
@@ -148,47 +152,43 @@ def generate_verification_token():
 unverified_users = {}
 
 
+# ——————————————————————————————————————————————
+# MANUAL REGISTRATION & VERIFICATION LOGIC
+# ——————————————————————————————————————————————
+
 def register_user(authenticator, config):
-    try:
-        email_of_registered_user, username_of_registered_user, name_of_registered_user = authenticator.register_user(
-            location='main',
-            pre_authorization=False,
-            clear_on_submit=True,
-            key='RegisterWidget'
+    """
+    1) Render the Streamlit‑Authenticator registration form.
+    2) On submit, stash the new user in `unverified_users` and
+       email them a verification link.
+    """
+    email, username, name = authenticator.register_user(
+        location="sidebar",
+        pre_authorized=None,       # open signup
+        clear_on_submit=True,
+        key="RegisterWidget"
+    )
+    if email:
+        # generate token & store pending user
+        token = secrets.token_urlsafe(16)
+        unverified_users[email] = {
+            "username": username,
+            "name": name,
+            "password": config["credentials"]["usernames"][username]["password"],
+            "token": token
+        }
+        # build & send verification link
+        params = urlencode({"token": token, "email": email})
+        link = f"{config['app']['domain']}?&{params}"
+        subject = "🔒 Complete your registration"
+        body = (
+            f"Hi {name},\n\n"
+            f"Thanks for registering. Please click the link below to verify your email and activate your account:\n\n"
+            f"{link}\n\n"
+            "If you didn't sign up, just ignore this email."
         )
-        if email_of_registered_user:
-            st.toast('User registration initiated. Please check your email to verify.', icon="✅")
-            # Generate a verification token
-            verification_token = generate_verification_token()
-            # Store the user temporarily with the token
-            unverified_users[email_of_registered_user] = {
-                'username': username_of_registered_user,
-                'name': name_of_registered_user,
-                'password': config['credentials']['usernames'][username_of_registered_user]['password'],
-                # Assuming password is hashed
-                'verification_token': verification_token
-            }
-
-            # Load the domain from config.yaml
-            app_domain = config['app']['domain']
-
-            # URL encode the parameters (token and email)
-            query_params = urlencode({
-                'token': verification_token,
-                'email': email_of_registered_user
-            })
-
-            # Create the verification link, now including the page parameter
-            verification_link = f"{app_domain}?&{query_params}"
-
-            # Send verification email
-            subject = "Email Verification"
-            body = f"Hello {name_of_registered_user},\n\nPlease verify your email by clicking the link below:\n{verification_link}"
-            send_email(subject, body, email_of_registered_user, config)
-
-    except Exception as e:
-        st.toast(e, icon="⚠️")
-
+        send_email(subject, body, email, config)
+        st.sidebar.success("✅ Check your inbox for a verification link.")
 
 # This is the verification handler
 def verify_email(token, email, config):
@@ -213,67 +213,105 @@ def verify_email(token, email, config):
 
 # Streamlit function to check URL parameters
 def verify_page(config=load_auth_config()):
-    if st.query_params.token or st.query_params.email:
-        token = st.query_params.token  # Extract token
-        email = st.query_params.email  # Extract email
-        print(token, email)
-        # Call the verification function
-        if verify_email(token, email, config):
-            st.success("Your email has been verified successfully. You can now log in.")
-        else:
-            st.error("Invalid or expired verification link.")
-    else:
-        st.error("Invalid request. Token or email is missing.")
-
+    """
+    Call this in app.py when you detect `token` and `email` in URL params.
+    Moves user from `unverified_users` into `config.yaml`.
+    """
+    tp = st.experimental_get_query_params()
+    token = tp.get("token", [None])[0]
+    email = tp.get("email", [None])[0]
+    if token and email and email in unverified_users:
+        entry = unverified_users[email]
+        if entry["token"] == token:
+            # commit to config
+            config["credentials"]["usernames"][entry["username"]] = {
+                "email": email,
+                "name": entry["name"],
+                "password": entry["password"]
+            }
+            update_yaml(config)
+            st.success("🎉 Email verified! You can now log in.")
+            del unverified_users[email]
+            return True
+    st.error("Invalid or expired verification link.")
+    return False
 
 # Reset password function
-def reset_password(authenticator, username, config):
-    try:
-        if authenticator.reset_password(username, location='main', clear_on_submit=True, key='ResetPasswdWidget'):
-            st.toast('Password modified successfully', icon="✅")
-            update_yaml(config)
-    except Exception as e:
-        st.toast(e, icon="⚠️")
+def reset_password(authenticator, config):
+    """
+    Allows a logged‑in user to change their password in‑app.
+    """
+    current_user = st.session_state.get("username")
+    if current_user:
+        try:
+            ok = authenticator.reset_password(
+                current_user,
+                location="sidebar",
+                clear_on_submit=True,
+                key="ResetPasswdWidget"
+            )
+            if ok:
+                update_yaml(config)  # write new hash back to file
+                st.sidebar.success("🔑 Password updated!")
+        except Exception as e:
+            st.sidebar.error(f"Reset failed: {e}")
 
 
-# Forgot password function
+# ——————————————————————————————————————————————
+# PASSWORD RESET & USERNAME RECOVERY (SMTP)
+# ——————————————————————————————————————————————
+
 def forgot_password(authenticator, config):
-    try:
-        username_of_forgotten_password, email_of_forgotten_password, new_random_password = authenticator.forgot_password(location='main', captcha=True, key='ForgotPasswdWidget')
-        if username_of_forgotten_password:
-            user_name = config['credentials']['usernames'][username_of_forgotten_password][
-                'name']  # Assuming you store the name in the config
-            update_yaml(config)
-            send_reset_password_email(user_name, new_random_password, email_of_forgotten_password, config)
-            st.toast('New password sent securely', icon="✅")
-        elif username_of_forgotten_password == False:
-            st.toast('Username not found', icon="⚠️")
-    except Exception as e:
-        st.toast(e, icon="⚠️")
+    """
+    Renders the widget, then emails the new random password.
+    """
+    user, email, new_pw = authenticator.forgot_password(
+        location="sidebar",
+        captcha=True,
+        send_email=False,      # we will email ourselves
+        clear_on_submit=True,
+        key="ForgotPasswdWidget"
+    )
+    if user:
+        # email via your SMTP helper
+        send_reset_password_email(user, new_pw, email, config)
+        st.sidebar.success(f"✅ New password sent to {email}")
 
 # Forgot username function
 def forgot_username(authenticator, config):
-    try:
-        username_of_forgotten_username, email_of_forgotten_username = authenticator.forgot_username(location='main', captcha=True, key='ForgotUserWidget')
-        if username_of_forgotten_username:
-            user_name = config['credentials']['usernames'][username_of_forgotten_username]['name']
-            update_yaml(config)
-            send_forgot_username_email(user_name, username_of_forgotten_username, email_of_forgotten_username, config)
-            st.toast('Username sent securely', icon="✅")
-        elif username_of_forgotten_username == False:
-            st.toast('Email not found', icon="⚠️")
-    except Exception as e:
-        st.toast(e, icon="⚠️")
+    """
+    Renders the widget, then emails the recovered username.
+    """
+    user, email = authenticator.forgot_username(
+        location="sidebar",
+        captcha=True,
+        send_email=False,
+        clear_on_submit=True,
+        key="ForgotUserWidget"
+    )
+    if user:
+        send_forgot_username_email(user, user, email, config)
+        st.sidebar.success(f"✅ Username sent to {email}")
 
 # Forgot username function
 def update_user(authenticator, config):
-    try:
-        if authenticator.update_user_details(st.session_state['username'], location='main', clear_on_submit=True, key='UpdateUserWidget'):
-            st.toast('Entries updated successfully', icon="✅")
-            update_yaml(config)
-    except Exception as e:
-        st.toast(e, icon="⚠️")
-
+    """
+    Allows a logged‑in user to update their name/email.
+    """
+    current_user = st.session_state.get("username")
+    if current_user:
+        try:
+            ok = authenticator.update_user_details(
+                current_user,
+                location="sidebar",
+                clear_on_submit=True,
+                key="UpdateUserWidget"
+            )
+            if ok:
+                update_yaml(config)
+                st.sidebar.success("✅ Profile updated!")
+        except Exception as e:
+            st.sidebar.error(f"Update failed: {e}")
 
 # Load environment variables from .env file
 load_dotenv()
@@ -722,64 +760,72 @@ def list_documents(index_name):
 
     return document_df
 
-
+# ——————————————————————————————————————————————
+# LOGIN / LOGOUT & HIGH‑LEVEL MENU
+# ——————————————————————————————————————————————
 def setup_authentication_menu():
-    # Setup Authenticator
-    authenticator, config = setup_authenticator()
+    config = load_auth_config()
 
-    if 'hashed_done' not in st.session_state:
-        config = hash_plaintext_passwords(config)
-        update_yaml(config)
-        st.session_state.hashed_done = True
+    # ─── Initialize session‐state keys ──────────────────────
+    if "logout" not in st.session_state:
+        st.session_state["logout"] = False
+    if "authentication_status" not in st.session_state:
+        st.session_state["authentication_status"] = None
 
-    col1, col2, col3, col4 = st.columns(4)
+    auth_status = st.session_state["authentication_status"]
 
-    # Login
-    with col1:
-        with st.popover("Login"):
-            name, authentication_status, username = login(authenticator)
+    # ─── If already logged in: show welcome/logout/manage only ───
+    if auth_status:
+        st.sidebar.markdown(f"**Welcome, {st.session_state['name']}!**")
 
-    # Handle Authentication Logic
-    if st.session_state["authentication_status"]:
-        st.markdown(f':thumbsup: Welcome *{name}*')
-        user_email = config['credentials']['usernames'][username]['email']
-        # Create a user-specific Elasticsearch index if it doesn't exist
-        index_name = f"user_{user_email.replace('@', '_').replace('.', '_')}"
-        if not es.indices.exists(index=index_name):
-            create_index(index_name)
-            st.toast(f"User-specific index '{index_name}' created.", icon="✅")
+        # Logout button
+        authenticator.logout("Logout", "sidebar", key="LogoutWidget")
+        st.session_state["logout"] = True
 
-        with col2:
-            # If the user is authenticated
-            logout(authenticator)
-        with col3:
-            # Reset password for authenticated users
-            with st.popover("Reset Password"):
-                reset_password(authenticator, username, config)
-        with col4:
-            # Update details for authenticated users
-            with st.popover("Update User Details"):
-                update_user(authenticator, config)
-        return name, config
-    elif st.session_state["authentication_status"] == False:
-        st.toast('Incorrect Username or Password', icon="⚠️")
-        with col2:
-            with st.popover("Register"):
-                register_user(authenticator, config)
-        with col3:
-            with st.popover("Forgot Password"):
-                forgot_password(authenticator, config)
-    elif st.session_state["authentication_status"] == None:
-        st.toast('Please enter your username and password', icon="⚠️")
-        with col2:
-            # Handle Registration
-            with st.popover("Register"):
-                register_user(authenticator, config)
-        with col3:
-            with st.popover("Forgot Password"):
-                forgot_password(authenticator, config)
-        with col4:
-            with st.popover("Forgot Username"):
-                forgot_username(authenticator, config)
-    # Ensure that name and config are always returned
-    return None, config
+        # Manage Account toggle
+        if st.sidebar.toggle("Manage Account", value=False):
+            reset_password(authenticator, config)
+            update_user(authenticator, config)
+
+        # Return the logged‑in user’s name for app.py
+        return st.session_state["name"]
+
+    # ─── Not logged in yet: show the auth menu ───────────────────
+    choice = st.sidebar.radio(
+        "🔐 Authentication",
+        ["Login", "Register", "Forgot Password", "Forgot Username"],
+        index=0
+    )
+
+    if choice == "Login":
+        result = authenticator.login(
+            location="sidebar",
+            max_concurrent_users=5,
+            max_login_attempts=3,
+            clear_on_submit=True,
+            key="LoginWidget"
+        )
+        if result:
+            name, new_status, username = result
+            st.session_state["authentication_status"] = new_status
+            if new_status:
+                st.session_state["name"] = name
+                st.session_state["username"] = username
+
+    elif choice == "Register":
+        register_user(authenticator, config)
+
+    elif choice == "Forgot Password":
+        forgot_password(authenticator, config)
+
+    else:  # "Forgot Username"
+        forgot_username(authenticator, config)
+
+    # ─── After an attempted login, show errors/info ────────────
+    auth_status = st.session_state["authentication_status"]
+    if auth_status is False:
+        st.sidebar.error("❌ Wrong username or password")
+    elif auth_status is None:
+        st.sidebar.info("ℹ️ Please log in or register")
+
+    return None
