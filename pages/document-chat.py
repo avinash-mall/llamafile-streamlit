@@ -1,6 +1,7 @@
 import streamlit as st
 import json
 import os
+import warnings
 from openai import OpenAI, APIConnectionError, APIStatusError, RateLimitError
 from elasticsearch import Elasticsearch, exceptions, ElasticsearchWarning
 from sentence_transformers import SentenceTransformer
